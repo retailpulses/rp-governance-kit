@@ -109,9 +109,12 @@ install_one() {
     return
   fi
 
+  # ensure CWD exists (safety: previous trap may have removed it)
+  cd /tmp 2>/dev/null || true
+
   # temp dir for cloning
   tmpdir=$(mktemp -d "/tmp/rp-governance-XXXXXX")
-  trap 'rm -rf "$tmpdir"' RETURN
+  trap 'rm -rf "${tmpdir:-}"; cd /tmp 2>/dev/null || true' RETURN
 
   echo "Cloning $repo ..."
   gh repo clone "$repo" "$tmpdir" 2>/dev/null || {

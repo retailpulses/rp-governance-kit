@@ -14,6 +14,7 @@ Standardizes Issue-first development across Retailpulses repos:
 - **Issue-first workflow** - every mergeable PR must link to a compliant GitHub Issue.
 - **Issue governance** - normal development Issues must use `bin/rp-issue-create` or an approved repo/org Issue template, not raw `gh issue create --body`.
 - **Agent tooling** - `rp-issue-create`, `rp-issue-audit`, `rp-issue-work`, and `rp-issue-closeout` scripts.
+- **Engineering standards** - centralized templates for engineering principles, frontend, data access, platform dependencies, and Issue governance.
 - **Docs impact tracking** - system changes without docs updates are flagged.
 - **Reusable CI** - central `governance-checks.yml` called by wrapper workflows.
 - **Rollout tooling** - installer and upgrade scripts for lightweight repo adoption.
@@ -62,9 +63,14 @@ rp-governance-kit/
 │   │   ├── rp-issue-audit
 │   │   ├── rp-issue-work
 │   │   └── rp-issue-closeout
-│   ├── docs/                                 # Docs templates
+│   ├── docs/                                 # Docs templates and engineering standards
 │   │   ├── 00_CURRENT_STATE.md
-│   │   └── 05_DECISION_LOG.md
+│   │   ├── 05_DECISION_LOG.md
+│   │   ├── 10_ENGINEERING_PRINCIPLES.md
+│   │   ├── 11_FRONTEND_STANDARDS.md
+│   │   ├── 12_DATA_ACCESS_AND_SECRETS.md
+│   │   ├── 13_PLATFORM_DEPENDENCY_POLICY.md
+│   │   └── 14_ISSUE_GOVERNANCE.md
 │   └── github/
 │       ├── pull_request_template.md          # PR template
 │       └── workflows/

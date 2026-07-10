@@ -176,6 +176,7 @@ install_one() {
   local repo="$1"
   local branch="chore/install-governance-kit"
   local tmpdir base existing_pr pr_url
+  local start_dir="$KIT_DIR"
 
   echo ""
   echo "========================================"
@@ -191,13 +192,15 @@ install_one() {
   base=$(default_branch "$repo")
   existing_pr=$(find_existing_pr "$repo" "$branch")
 
+  cd /tmp
   tmpdir=$(mktemp -d "/tmp/rp-governance-XXXXXX")
-  trap 'rm -rf "${tmpdir:-}"' RETURN
 
   echo "Cloning $repo ..."
   if ! gh repo clone "$repo" "$tmpdir" -- --quiet; then
     echo "Failed to clone $repo"
     FAILED+=("$repo (clone failed)")
+    cd "$start_dir"
+    rm -rf "$tmpdir"
     return
   fi
 
@@ -208,6 +211,8 @@ install_one() {
   if is_up_to_date "$tmpdir"; then
     echo "Already up to date: $repo"
     UPTODATE+=("$repo")
+    cd "$start_dir"
+    rm -rf "$tmpdir"
     return
   fi
 
@@ -216,6 +221,8 @@ install_one() {
   if ! has_changes; then
     echo "No changes to commit: $repo"
     UPTODATE+=("$repo")
+    cd "$start_dir"
+    rm -rf "$tmpdir"
     return
   fi
 
@@ -225,6 +232,8 @@ install_one() {
   if [[ "$DRY_RUN" == true ]]; then
     echo "[DRY-RUN] Would commit, push, and open/update PR for $repo"
     INSTALLED+=("$repo (dry-run)")
+    cd "$start_dir"
+    rm -rf "$tmpdir"
     return
   fi
 
@@ -301,6 +310,9 @@ Confirm the repo should use the standard lightweight governance footprint." )
     PR_URLS+=("$repo -> $pr_url")
     INSTALLED+=("$repo")
   fi
+
+  cd "$start_dir"
+  rm -rf "$tmpdir"
 }
 
 summary() {

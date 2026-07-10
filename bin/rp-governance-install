@@ -188,8 +188,8 @@ install_one() {
     fi
   fi
 
-  # check for changes
-  if git diff --quiet && git diff --cached --quiet; then
+  # check for changes (tracked or untracked)
+  if git diff --quiet && git diff --cached --quiet && [[ -z "$(git ls-files --others --exclude-standard 2>/dev/null)" ]]; then
     echo "No changes to commit — already up to date."
     UPTODATE+=("$repo")
     return

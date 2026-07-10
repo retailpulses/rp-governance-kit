@@ -1,5 +1,7 @@
 name: Minimal Test
-on: workflow_call:
+on:
+  workflow_call:
+
 jobs:
   echo:
     runs-on: ubuntu-latest

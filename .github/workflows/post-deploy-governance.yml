@@ -1,0 +1,103 @@
+name: Post-Deploy Governance
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        type: string
+      deployed_target:
+        required: false
+        type: string
+        default: ""
+      smoke_test_result:
+        required: false
+        type: string
+        default: "unknown"
+      comment_pr:
+        required: false
+        type: boolean
+        default: false
+      comment_issue:
+        required: false
+        type: boolean
+        default: false
+      artifact:
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  post-deploy-closeout:
+    name: Post-Deploy Closeout
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run rp-deploy-closeout
+        id: closeout
+        shell: bash
+        run: |
+          if [[ ! -x bin/rp-deploy-closeout ]]; then
+            echo "bin/rp-deploy-closeout not found. Install current governance kit first."
+            echo "::warning::rp-deploy-closeout not installed in this repo"
+            exit 0
+          fi
+          bin/rp-deploy-closeout \
+            --env "${{ inputs.environment }}" \
+            --sha "${{ github.sha }}" \
+            --repo "${{ github.repository }}" \
+            --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            --deployed-target "${{ inputs.deployed_target }}" \
+            --smoke-test-result "${{ inputs.smoke_test_result }}" \
+            --job-summary \
+            ${{ inputs.comment_pr && '--comment-pr' || '' }} \
+            ${{ inputs.comment_issue && '--comment-issue' || '' }} \
+            ${{ inputs.artifact && '--artifact' || '' }}
+
+      - name: Upload closeout artifact
+        if: inputs.artifact == true
+        uses: actions/upload-artifact@v4
+        with:
+          name: deploy-closeout-${{ github.sha }}
+          path: .tmp/deploy-closeout-${{ github.sha }}.md
+          retention-days: 7
+
+  repo-housekeeping:
+    name: Repo Housekeeping
+    runs-on: ubuntu-latest
+    needs: post-deploy-closeout
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run rp-repo-housekeeping
+        id: housekeeping
+        shell: bash
+        run: |
+          if [[ ! -x bin/rp-repo-housekeeping ]]; then
+            echo "bin/rp-repo-housekeeping not found. Install current governance kit first."
+            echo "::warning::rp-repo-housekeeping not installed in this repo"
+            exit 0
+          fi
+          bin/rp-repo-housekeeping \
+            --after-deploy \
+            --env "${{ inputs.environment }}" \
+            --sha "${{ github.sha }}" \
+            --repo "${{ github.repository }}" \
+            --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            --job-summary \
+            ${{ inputs.comment_pr && '--comment-pr' || '' }} \
+            ${{ inputs.comment_issue && '--comment-issue' || '' }} \
+            ${{ inputs.artifact && '--artifact' || '' }}
+
+      - name: Upload housekeeping artifact
+        if: inputs.artifact == true
+        uses: actions/upload-artifact@v4
+        with:
+          name: repo-housekeeping-${{ github.sha }}
+          path: .tmp/repo-housekeeping-${{ github.sha }}.md
+          retention-days: 7

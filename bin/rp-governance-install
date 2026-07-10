@@ -129,6 +129,11 @@ is_up_to_date() {
     "bin/rp-issue-audit"
     "bin/rp-issue-work"
     "bin/rp-issue-closeout"
+    "docs/10_ENGINEERING_PRINCIPLES.md"
+    "docs/11_FRONTEND_STANDARDS.md"
+    "docs/12_DATA_ACCESS_AND_SECRETS.md"
+    "docs/13_PLATFORM_DEPENDENCY_POLICY.md"
+    "docs/14_ISSUE_GOVERNANCE.md"
   )
   local f
   for f in "${expected_files[@]}"; do
@@ -152,9 +157,12 @@ copy_files() {
   sed "s/__REF__/$KIT_REF/g" "$KIT_DIR/templates/github/workflows/governance-checks-wrapper.yml" > ".github/workflows/governance-checks.yml"
 
   local doc
-  for doc in 00_CURRENT_STATE.md 05_DECISION_LOG.md; do
+  for doc in 00_CURRENT_STATE.md 05_DECISION_LOG.md 10_ENGINEERING_PRINCIPLES.md 11_FRONTEND_STANDARDS.md 12_DATA_ACCESS_AND_SECRETS.md 13_PLATFORM_DEPENDENCY_POLICY.md 14_ISSUE_GOVERNANCE.md; do
     if [[ ! -f "docs/$doc" || "$FORCE" == true ]]; then
       cp "$KIT_DIR/templates/docs/$doc" "docs/$doc"
+      echo "Installed docs/$doc"
+    else
+      echo "Skipped docs/$doc (already exists, use --force to overwrite)"
     fi
   done
 

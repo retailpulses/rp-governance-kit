@@ -56,6 +56,11 @@ The command generates `.tmp/issue-draft.md` with the required governance section
 - Runtime / Infrastructure Impact
 - Cloudflare Dependency
 - Baserow Dependency / Legacy Impact
+- Frontend Stack Impact
+- Engineering Standards Impact
+- Frontend Standards Impact
+- Secrets / Permissions Impact
+- Platform Dependency Impact
 - Documentation Requirement
 - Acceptance Criteria
 - Risks / Open Questions
@@ -116,6 +121,15 @@ bin/rp-issue-work <issue-number>
 
 `rp-issue-work` runs the Issue audit before preparing the work brief. If the Issue fails governance audit, it stops before coding and generates a correction draft.
 
+Generated work briefs include standards docs as required reading:
+
+- All Issues → `docs/10_ENGINEERING_PRINCIPLES.md` and `docs/14_ISSUE_GOVERNANCE.md`
+- Frontend changes → `docs/11_FRONTEND_STANDARDS.md`
+- Supabase/schema/env/secrets changes → `docs/12_DATA_ACCESS_AND_SECRETS.md`
+- Cloudflare/Workers/R2/KV/Cron/deployment changes → `docs/13_PLATFORM_DEPENDENCY_POLICY.md`
+
+If the Issue is missing relevant governance impact fields, `rp-issue-work` stops before coding and instructs the agent to correct the Issue first.
+
 Coding must not start from a non-compliant Issue. Correct the Issue first, then rerun `bin/rp-issue-work <issue-number>`.
 
 Only use this override with explicit approval:
@@ -139,9 +153,21 @@ Issue governance:
 - Issue created with rp-issue-create or approved template: yes/no/unknown
 - Issue audit passed before work: yes/no
 - Missing governance fields corrected: yes/no/not needed
+
+Governance standards review:
+- Issue governance passed before work: yes/no/unknown
+- Engineering principles followed: yes/no/notes
+- Frontend standards followed: yes/no/not applicable
+- Frontend stack follows React + Vite + TypeScript: yes/no/not applicable
+- If frontend stack differs, exception documented: yes/no/not applicable
+- Supabase / secrets access safe: yes/no/not applicable
+- New Baserow dependency introduced: yes/no
+- New Cloudflare-specific coupling introduced: yes/no
+- Existing canonical tables reused before creating new tables: yes/no/not applicable
+- Documentation updated where needed: yes/no
 ```
 
-If the status is unknown, the PR summary flags it for Jim review.
+If any item is no or unknown, the PR summary flags it for Jim review.
 
 ## Exceptions
 

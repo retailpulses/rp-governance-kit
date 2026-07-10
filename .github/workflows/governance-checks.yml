@@ -60,3 +60,67 @@ jobs:
           else
             echo "No system-impacting files detected: OK"
           fi
+
+  governance-warnings:
+    name: Governance Warnings (Non-Blocking)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for governance warnings
+        continue-on-error: true
+        run: |
+          CHANGED=$(git diff --name-only "${{ github.event.pull_request.base.sha }}"..."${{ github.event.pull_request.head.sha }}" 2>/dev/null || echo "")
+          echo "=== Non-blocking governance warnings ==="
+          WARNINGS=0
+
+          if echo "$CHANGED" | grep -qi 'baserow'; then
+            echo "::warning::Baserow reference detected. Baserow is legacy and should be gradually discontinued."
+            WARNINGS=$((WARNINGS + 1))
+          fi
+
+          if echo "$CHANGED" | grep -qi 'supabase.*service_role_key\|service.role'; then
+            if echo "$CHANGED" | grep -qiE '\.(tsx|jsx|vue|svelte|html)$'; then
+              echo "::warning::SUPABASE_SERVICE_ROLE_KEY reference detected in frontend/app code. Service role keys must not be exposed to frontend."
+              WARNINGS=$((WARNINGS + 1))
+            fi
+          fi
+
+          if echo "$CHANGED" | grep -qiE 'autoComplete="on"|autocomplete="on"'; then
+            if echo "$CHANGED" | grep -qiE '\.(tsx|jsx|html)$'; then
+              echo "::warning::Possible frontend input without explicit autocomplete policy. Non-login forms should set autoComplete=\"off\"."
+              WARNINGS=$((WARNINGS + 1))
+            fi
+          fi
+
+          if echo "$CHANGED" | grep -qiE '\.(vue|svelte|angular|jsp|erb)$'; then
+            echo "::warning::Possible frontend stack drift from React + Vite + TypeScript. New frontend work should converge toward React + Vite + TypeScript."
+            WARNINGS=$((WARNINGS + 1))
+          fi
+
+          if echo "$CHANGED" | grep -qiE 'wrangler\.toml|worker.*\.ts'; then
+            if ! echo "$CHANGED" | grep -qiE 'docs/13_|docs/00_CURRENT_STATE|docs/05_DECISION_LOG'; then
+              echo "::warning::New Cloudflare-specific dependency without docs update. Platform dependency policy (docs/13) should be reviewed."
+              WARNINGS=$((WARNINGS + 1))
+            fi
+          fi
+
+          if echo "$CHANGED" | grep -qiE 'supabase/migrations/'; then
+            if ! echo "$CHANGED" | grep -qiE 'docs/12_|docs/00_CURRENT_STATE|docs/05_DECISION_LOG'; then
+              echo "::warning::New Supabase migration without governance docs update. Data access standards (docs/12) should be reviewed."
+              WARNINGS=$((WARNINGS + 1))
+            fi
+          fi
+
+          if echo "$CHANGED" | grep -qiE '(\.env|secret|credential|password|token|api_key)\.md$'; then
+            echo "::warning::Possible secrets committed to tracked files. Secrets must not be committed."
+            WARNINGS=$((WARNINGS + 1))
+          fi
+
+          if [ "$WARNINGS" -eq 0 ]; then
+            echo "No governance warnings detected."
+          else
+            echo "$WARNINGS governance warning(s) reported above."
+          fi

@@ -2,14 +2,35 @@
 
 Centralized governance toolkit for Retailpulses repositories.
 
-## What it does
+This repository is the central governance source for Retailpulses repositories.
+The organization `.github` repo may provide default GitHub templates, but governance logic, reusable workflows, agent commands, rollout scripts, and engineering standards are maintained here.
+
+If local repo governance files and central governance conflict, agents must stop and report the conflict instead of guessing.
+
+## What It Does
 
 Standardizes Issue-first development across Retailpulses repos:
 
-- **Issue-first workflow** — every PR must link to a GitHub Issue
-- **Agent tooling** — `rp-issue-create`, `rp-issue-work`, `rp-issue-closeout` scripts
-- **Docs impact tracking** — system changes without docs updates are flagged
-- **Reusable CI** — central `governance-checks.yml` called by wrapper workflows
+- **Issue-first workflow** - every mergeable PR must link to a compliant GitHub Issue.
+- **Issue governance** - normal development Issues must use `bin/rp-issue-create` or an approved repo/org Issue template, not raw `gh issue create --body`.
+- **Agent tooling** - `rp-issue-create`, `rp-issue-audit`, `rp-issue-work`, and `rp-issue-closeout` scripts.
+- **Docs impact tracking** - system changes without docs updates are flagged.
+- **Reusable CI** - central `governance-checks.yml` called by wrapper workflows.
+- **Rollout tooling** - installer and upgrade scripts for lightweight repo adoption.
+
+## Issue Creation Rule
+
+No raw `gh issue create --body` for normal development work.
+
+Agents must create Issues using:
+
+1. `bin/rp-issue-create`
+2. The repository GitHub Issue Form/template through the GitHub UI
+3. An explicit user-approved exception
+
+If an Issue is created outside governance format, it must be corrected before coding begins.
+
+See [docs/ISSUE_GOVERNANCE.md](docs/ISSUE_GOVERNANCE.md).
 
 ## Install
 
@@ -17,43 +38,51 @@ Standardizes Issue-first development across Retailpulses repos:
 # Install into a single repo
 bin/rp-governance-install retailpulses/RPagentOS
 
-# Install with a specific ref
+# Install a specific ref
 bin/rp-governance-install retailpulses/ticket-handling --ref v1
 
-# Batch install from a file
+# Batch install file
 bin/rp-governance-install --repos repos.txt
 
-# Dry run (see what would happen)
+# Dry run
 bin/rp-governance-install retailpulses/RPagentOS --dry-run
 ```
 
 ## Structure
 
-```
+```text
 rp-governance-kit/
 ├── .github/workflows/
-│   └── governance-checks.yml          # Central reusable workflow (workflow_call)
+│   └── governance-checks.yml                 # Central reusable workflow
+├── docs/
+│   └── ISSUE_GOVERNANCE.md                   # Issue-first governance policy
 ├── templates/
-│   ├── bin/                           # Agent scripts installed into target repos
+│   ├── bin/                                  # Agent scripts installed into target repos
 │   │   ├── rp-issue-create
+│   │   ├── rp-issue-audit
 │   │   ├── rp-issue-work
 │   │   └── rp-issue-closeout
-│   ├── docs/                          # Docs templates
+│   ├── docs/                                 # Docs templates
 │   │   ├── 00_CURRENT_STATE.md
 │   │   └── 05_DECISION_LOG.md
 │   └── github/
-│       ├── pull_request_template.md   # PR template
+│       ├── pull_request_template.md          # PR template
 │       └── workflows/
-│           └── governance-checks-wrapper.yml  # Thin wrapper for target repos
+│           └── governance-checks-wrapper.yml # Thin wrapper for target repos
 ├── bin/
-│   └── rp-governance-install          # Installer script
+│   ├── rp-governance-install                 # Installer script
+│   ├── rp-issue-create                       # Local wrapper for the template command
+│   ├── rp-issue-audit                        # Local wrapper for the template command
+│   ├── rp-issue-work                         # Local wrapper for the template command
+│   └── rp-issue-closeout                     # Local wrapper for the template command
 └── README.md
 ```
 
 ## Safety
 
-- Never pushes to `main` directly
-- Never auto-merges
-- Never overwrites repo-specific docs without `--force`
-- Skips archived repos
-- Checks for existing governance PRs before opening duplicates
+- Never pushes `main` directly.
+- Never auto-merges.
+- Never overwrites repo-specific docs without `--force`.
+- Skips archived repos.
+- Checks for existing governance PRs before opening duplicates.
+- Keeps installed repo governance lightweight and agent-friendly.

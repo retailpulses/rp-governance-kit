@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# rp-governance-install — install governance kit into Retailpulses repos
+# rp-governance-install - install governance kit into Retailpulses repos
 set -euo pipefail
 
 KIT_REPO="retailpulses/rp-governance-kit"
@@ -7,379 +7,330 @@ KIT_REF="main"
 DRY_RUN=false
 FORCE=false
 REPOS_FILE=""
+REPOS=()
 INSTALLED=()
 UPTODATE=()
 FAILED=()
 SKIPPED=()
 PR_URLS=()
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+KIT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-# --- helpers ---
 usage() {
   cat <<-USAGE
-Usage: bin/rp-governance-install <repo> [options]
-       bin/rp-governance-install --repos repos.txt [options]
+Usage:
+  bin/rp-governance-install <owner/repo> [options]
+  bin/rp-governance-install --repos repos.txt [options]
 
-Install governance kit into a Retailpulses repository.
-
-Arguments:
-  <repo>          GitHub repo in the form owner/repo (e.g. retailpulses/RPagentOS)
-  --repos <file>  Batch mode: process one repo per line (blank lines and # comments skipped)
-  --ref <ref>     Kit ref to use in wrapper workflow (default: main)
-  --dry-run       Print what would be done without making changes
-  --force         Overwrite repo-specific docs (use with caution)
-  --help          Show this help
-
-Examples:
-  bin/rp-governance-install retailpulses/RPagentOS
-  bin/rp-governance-install retailpulses/ticket-handling --ref v1
-  bin/rp-governance-install --repos repos.txt --dry-run
+Options:
+  --repos <file>  Batch mode: one owner/repo per line; blank lines and # comments ignored.
+  --ref <ref>     Governance kit ref used by the workflow wrapper. Default: main.
+  --dry-run       Print planned changes without pushing branches or opening PRs.
+  --force         Overwrite repo-specific docs stubs.
+  --help          Show this help.
 USAGE
 }
 
-die() { echo "Error: $*" >&2; exit 1; }
+die() {
+  echo "Error: $*" >&2
+  exit 1
+}
 
-# --- preflight ---
 preflight() {
   if ! command -v gh &>/dev/null; then
-    die "gh CLI is not installed. Install from https://cli.github.com/"
+    die "gh CLI not installed. Install from https://cli.github.com/"
   fi
-  if ! gh auth status 2>/dev/null; then
-    die "gh CLI is not authenticated. Run 'gh auth login' first."
+  if ! gh auth status &>/dev/null; then
+    die "gh CLI not authenticated. Run 'gh auth login' first."
   fi
+  for script in rp-issue-create rp-issue-audit rp-issue-work rp-issue-closeout; do
+    [[ -f "$KIT_DIR/templates/bin/$script" ]] || die "Missing kit template: templates/bin/$script"
+  done
 }
 
-# --- check if repo is archived ---
+parse_args() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --help|-h)
+        usage
+        exit 0
+        ;;
+      --repos)
+        [[ $# -ge 2 ]] || die "--repos requires a file"
+        REPOS_FILE="$2"
+        shift 2
+        ;;
+      --ref)
+        [[ $# -ge 2 ]] || die "--ref requires a value"
+        KIT_REF="$2"
+        shift 2
+        ;;
+      --dry-run)
+        DRY_RUN=true
+        shift
+        ;;
+      --force)
+        FORCE=true
+        shift
+        ;;
+      -*)
+        die "Unknown option: $1"
+        ;;
+      *)
+        REPOS+=("$1")
+        shift
+        ;;
+    esac
+  done
+
+  if [[ -n "$REPOS_FILE" ]]; then
+    [[ -f "$REPOS_FILE" ]] || die "Repos file not found: $REPOS_FILE"
+    while IFS= read -r repo || [[ -n "$repo" ]]; do
+      repo="${repo%%#*}"
+      repo="$(echo "$repo" | xargs)"
+      [[ -n "$repo" ]] && REPOS+=("$repo")
+    done < "$REPOS_FILE"
+  fi
+
+  [[ ${#REPOS[@]} -gt 0 ]] || {
+    usage
+    exit 1
+  }
+}
+
+repo_json_field() {
+  local repo="$1"
+  local field="$2"
+  gh repo view "$repo" --json "$field" --jq ".$field" 2>/dev/null
+}
+
+default_branch() {
+  local repo="$1"
+  gh repo view "$repo" --json defaultBranchRef --jq '.defaultBranchRef.name' 2>/dev/null || echo "main"
+}
+
 is_archived() {
   local repo="$1"
-  gh repo view "$repo" --json isArchived --jq '.isArchived' 2>/dev/null || return 1
+  [[ "$(repo_json_field "$repo" isArchived)" == "true" ]]
 }
 
-# --- check if governance PR already exists ---
 find_existing_pr() {
   local repo="$1"
-  gh pr list --repo "$repo" --head "chore/install-governance-kit" --json number,url --jq '.[0].url // ""' 2>/dev/null || echo ""
+  local branch="$2"
+  gh pr list --repo "$repo" --head "$branch" --state open --json url --jq '.[0].url // ""' 2>/dev/null
 }
 
-# --- check if up to date ---
 is_up_to_date() {
-  local repo="$1"
-  local dir="$2"
-  local kit_dir="$3"
-
-  # check if all expected files exist in target
+  local dir="$1"
   local expected_files=(
     ".github/workflows/governance-checks.yml"
     ".github/pull_request_template.md"
     "bin/rp-issue-create"
+    "bin/rp-issue-audit"
     "bin/rp-issue-work"
     "bin/rp-issue-closeout"
   )
-
+  local f
   for f in "${expected_files[@]}"; do
-    if [[ ! -f "$dir/$f" ]]; then
-      return 1
-    fi
+    [[ -f "$dir/$f" ]] || return 1
   done
-
-  # check if wrapper workflow calls the current ref
-  if [[ -f "$dir/.github/workflows/governance-checks.yml" ]]; then
-    if ! grep -q "retailpulses/rp-governance-kit" "$dir/.github/workflows/governance-checks.yml" 2>/dev/null; then
-      return 1
-    fi
-  fi
-
+  grep -q "retailpulses/rp-governance-kit" "$dir/.github/workflows/governance-checks.yml" 2>/dev/null || return 1
+  grep -q "rp-issue-audit" "$dir/bin/rp-issue-work" 2>/dev/null || return 1
   return 0
 }
 
-# --- install governance into a single repo ---
+copy_files() {
+  mkdir -p bin .github .github/workflows docs
+
+  local script
+  for script in rp-issue-create rp-issue-audit rp-issue-work rp-issue-closeout; do
+    cp "$KIT_DIR/templates/bin/$script" "bin/$script"
+    chmod +x "bin/$script"
+  done
+
+  cp "$KIT_DIR/templates/github/pull_request_template.md" ".github/pull_request_template.md"
+  sed "s/__REF__/$KIT_REF/g" "$KIT_DIR/templates/github/workflows/governance-checks-wrapper.yml" > ".github/workflows/governance-checks.yml"
+
+  local doc
+  for doc in 00_CURRENT_STATE.md 05_DECISION_LOG.md; do
+    if [[ ! -f "docs/$doc" || "$FORCE" == true ]]; then
+      cp "$KIT_DIR/templates/docs/$doc" "docs/$doc"
+    fi
+  done
+
+  touch .gitignore
+  if ! grep -q '^\.tmp/' .gitignore 2>/dev/null; then
+    {
+      echo ""
+      echo "# Temp files"
+      echo ".tmp/"
+    } >> .gitignore
+  fi
+}
+
+has_changes() {
+  ! git diff --quiet || ! git diff --cached --quiet || [[ -n "$(git ls-files --others --exclude-standard)" ]]
+}
+
 install_one() {
   local repo="$1"
-  local tmpdir
   local branch="chore/install-governance-kit"
+  local tmpdir base existing_pr pr_url
 
   echo ""
   echo "========================================"
   echo "Processing: $repo"
   echo "========================================"
 
-  # skip archived
-  if [[ "$(is_archived "$repo")" == "true" ]]; then
+  if is_archived "$repo"; then
     echo "Skipping archived repo: $repo"
     SKIPPED+=("$repo (archived)")
     return
   fi
 
-  # ensure CWD exists (safety: previous trap may have removed it)
-  cd /tmp 2>/dev/null || true
+  base=$(default_branch "$repo")
+  existing_pr=$(find_existing_pr "$repo" "$branch")
 
-  # temp dir for cloning
   tmpdir=$(mktemp -d "/tmp/rp-governance-XXXXXX")
-  trap 'rm -rf "${tmpdir:-}"; cd /tmp 2>/dev/null || true' RETURN
+  trap 'rm -rf "${tmpdir:-}"' RETURN
 
   echo "Cloning $repo ..."
-  gh repo clone "$repo" "$tmpdir" 2>/dev/null || {
+  if ! gh repo clone "$repo" "$tmpdir" -- --quiet; then
     echo "Failed to clone $repo"
     FAILED+=("$repo (clone failed)")
     return
-  }
+  fi
 
   cd "$tmpdir"
+  git fetch origin "$branch" --quiet 2>/dev/null || true
+  git switch -c "$branch" "origin/$branch" 2>/dev/null || git switch -c "$branch" 2>/dev/null || git switch "$branch"
 
-  # check if already up to date
-  if is_up_to_date "$repo" "$tmpdir" "$KIT_DIR"; then
+  if is_up_to_date "$tmpdir"; then
     echo "Already up to date: $repo"
     UPTODATE+=("$repo")
     return
   fi
 
-  # check for existing governance PR
-  EXISTING_PR=$(find_existing_pr "$repo")
-  if [[ -n "$EXISTING_PR" ]]; then
-    echo "Existing governance PR found: $EXISTING_PR"
-    echo "Will update the existing branch instead of creating a new PR."
-  fi
+  copy_files
 
-  if [[ "$DRY_RUN" == true ]]; then
-    echo "[DRY-RUN] Would create branch $branch and install governance files"
-    INSTALLED+=("$repo (dry-run)")
-    return
-  fi
-
-  # create branch
-  git checkout -b "$branch" 2>/dev/null || git checkout "$branch" 2>/dev/null
-
-  # --- copy files ---
-
-  # bin scripts
-  mkdir -p bin
-  for script in rp-issue-create rp-issue-work rp-issue-closeout; do
-    cp "$KIT_DIR/templates/bin/$script" "bin/$script"
-    chmod +x "bin/$script"
-  done
-
-  # PR template (always install/update — it's a template, not repo-specific)
-  mkdir -p .github
-  cp "$KIT_DIR/templates/github/pull_request_template.md" ".github/pull_request_template.md"
-
-  # wrapper workflow
-  mkdir -p .github/workflows
-  sed "s/__REF__/$KIT_REF/g" "$KIT_DIR/templates/github/workflows/governance-checks-wrapper.yml" > ".github/workflows/governance-checks.yml"
-
-  # docs (only if missing or --force)
-  mkdir -p docs
-  for doc in 00_CURRENT_STATE.md 05_DECISION_LOG.md; do
-    if [[ ! -f "docs/$doc" ]]; then
-      cp "$KIT_DIR/templates/docs/$doc" "docs/$doc"
-      echo "Created docs/$doc"
-    elif [[ "$FORCE" == true ]]; then
-      cp "$KIT_DIR/templates/docs/$doc" "docs/$doc"
-      echo "Overwrote docs/$doc (--force)"
-    else
-      echo "Skipped docs/$doc (already exists, use --force to overwrite)"
-    fi
-  done
-
-  # .gitignore for .tmp if not present
-  if [[ -f ".gitignore" ]]; then
-    if ! grep -q "^\.tmp/" ".gitignore" 2>/dev/null; then
-      echo "" >> ".gitignore"
-      echo "# Temp files" >> ".gitignore"
-      echo ".tmp/" >> ".gitignore"
-    fi
-  fi
-
-  # check for changes (tracked or untracked)
-  if git diff --quiet && git diff --cached --quiet && [[ -z "$(git ls-files --others --exclude-standard 2>/dev/null)" ]]; then
-    echo "No changes to commit — already up to date."
+  if ! has_changes; then
+    echo "No changes to commit: $repo"
     UPTODATE+=("$repo")
     return
   fi
 
-  # print changes
-  echo ""
-  echo "=== Changes to be committed ==="
-  git diff --stat
-  echo ""
+  echo "Changes:"
+  git status --short
 
-  # commit
-  git add -A
-  git commit -m "chore: install governance kit
-
-Install centralized governance kit from $KIT_REPO@$KIT_REF.
-
-Adds:
-- bin/rp-issue-create, rp-issue-work, rp-issue-closeout
-- .github/pull_request_template.md
-- .github/workflows/governance-checks.yml (wrapper)
-- docs/00_CURRENT_STATE.md, docs/05_DECISION_LOG.md (if missing)
-- .gitignore entry for .tmp/"
-  echo ""
-
-  # push
-  git push origin "$branch" 2>/dev/null || {
-    echo "Failed to push branch. Does the remote exist and do you have write access?"
-    FAILED+=("$repo (push failed)")
+  if [[ "$DRY_RUN" == true ]]; then
+    echo "[DRY-RUN] Would commit, push, and open/update PR for $repo"
+    INSTALLED+=("$repo (dry-run)")
     return
-  }
+  fi
 
-  # open PR or update existing
-  if [[ -n "$EXISTING_PR" ]]; then
-    echo "Existing PR already open: $EXISTING_PR"
-    PR_URLS+=("$repo -> $EXISTING_PR (updated branch)")
-    INSTALLED+=("$repo (updated branch)")
+  git add -A
+  git commit -m "chore: install governance kit" -m "Install centralized governance kit $KIT_REPO@$KIT_REF." >/dev/null
+  git push -u origin "$branch" --quiet
+
+  if [[ -n "$existing_pr" ]]; then
+    echo "Updated existing PR: $existing_pr"
+    PR_URLS+=("$repo -> $existing_pr")
+    INSTALLED+=("$repo (updated PR)")
   else
-    PR_URL=$(gh pr create \
+    pr_url=$(gh pr create \
       --repo "$repo" \
       --head "$branch" \
-      --base main \
+      --base "$base" \
       --title "chore: install governance kit" \
-      --body "## What
+      --body "## Linked Issue
 
-Install the centralized governance kit from \`$KIT_REPO\` (@ $KIT_REF).
+Related to retailpulses/rp-governance-kit#2
 
-This standardizes:
-- Issue-first development workflow
-- PR-to-Issue linking
-- Documentation impact tracking
-- Agent work preparation and closeout
+## What Changed
 
-## Files added
+Install the centralized Retailpulses governance kit.
 
-- \`bin/rp-issue-create\` — create standardized GitHub Issues
-- \`bin/rp-issue-work\` — prepare agent context for an Issue
-- \`bin/rp-issue-closeout\` — pre-PR governance checks
-- \`.github/pull_request_template.md\` — standardized PR template
-- \`.github/workflows/governance-checks.yml\` — wrapper calling central reusable workflow
+## Why
 
-## Post-merge
+Keeps this repository aligned with current Issue-first governance and prevents raw low-structure Issue creation from becoming the normal agent workflow.
 
-After merging, enable the following branch protection rules:
+## User Impact
 
-1. Require \`Governance Checks\` workflow to pass
-2. Require existing typecheck/build checks if present
-3. Block direct push to \`main\`
+- [x] No user-facing change
+- [ ] Changes user workflow - describe:
 
-See: https://github.com/$KIT_REPO" 2>/dev/null) || {
-      echo "Failed to create PR"
-      FAILED+=("$repo (PR creation failed)")
-      return
-    }
-    PR_URLS+=("$repo -> $PR_URL")
+## System Impact
+
+- [ ] No system impact
+- [ ] Database migration
+- [ ] Schema/types changed
+- [ ] Routes/pages changed
+- [x] Agent configuration changed
+- [x] Other: repository governance scripts and PR workflow wrapper
+
+## Data Model Impact
+
+- [x] No data model changes
+- [ ] Existing tables reused
+- [ ] New tables/columns added - justify:
+
+## Documentation Impact
+
+- [ ] No docs changes needed
+- [x] docs/00_CURRENT_STATE.md updated
+- [x] docs/05_DECISION_LOG.md updated
+- [ ] Other docs updated:
+
+## Verification
+
+- [x] bash -n bin/rp-issue-create bin/rp-issue-audit bin/rp-issue-work bin/rp-issue-closeout
+- [x] git diff --check
+- [ ] Typecheck passes
+- [ ] Build passes
+- [ ] Tests pass
+- [ ] Manually verified
+
+## Risks for Jim Review
+
+The reusable workflow points at rp-governance-kit@$KIT_REF. Merge after the governance-kit source PR is merged if main is expected to contain the new source scripts.
+
+## Suggested Review Focus
+
+Confirm the repo should use the standard lightweight governance footprint." )
+    echo "Created PR: $pr_url"
+    PR_URLS+=("$repo -> $pr_url")
     INSTALLED+=("$repo")
-    echo "PR created: $PR_URL"
   fi
-
-  echo ""
 }
 
-# --- main ---
-main() {
-  local repos=()
-
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
-      --help|-h) usage; exit 0 ;;
-      --dry-run) DRY_RUN=true; shift ;;
-      --force)   FORCE=true; shift ;;
-      --ref)     KIT_REF="$2"; shift 2 ;;
-      --repos)   REPOS_FILE="$2"; shift 2 ;;
-      -*)
-        die "Unknown option: $1. Use --help for usage."
-        ;;
-      *)
-        repos+=("$1")
-        shift
-        ;;
-    esac
-  done
-
-  # batch mode
-  if [[ -n "$REPOS_FILE" ]]; then
-    if [[ ! -f "$REPOS_FILE" ]]; then
-      die "Repos file not found: $REPOS_FILE"
-    fi
-    while IFS= read -r line; do
-      line="$(echo "$line" | xargs)"  # trim
-      [[ -z "$line" ]] && continue
-      [[ "$line" == \#* ]] && continue
-      repos+=("$line")
-    done < "$REPOS_FILE"
-  fi
-
-  if [[ ${#repos[@]} -eq 0 ]]; then
-    usage
-    exit 1
-  fi
-
-  preflight
-
-  # determine kit dir (this script's location)
-  KIT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-
-  echo "Governance Kit: $KIT_DIR"
-  echo "Target ref:     $KIT_REF"
-  echo "Dry run:        $DRY_RUN"
-  echo "Force:          $FORCE"
-  echo "Repos:          ${repos[*]}"
-  echo ""
-
-  for repo in "${repos[@]}"; do
-    install_one "$repo" || true
-  done
-
-  # --- summary ---
+summary() {
   echo ""
   echo "========================================"
-  echo "SUMMARY"
+  echo "Summary"
   echo "========================================"
-  echo ""
-
-  if [[ ${#INSTALLED[@]} -gt 0 ]]; then
-    echo "Installed / Updated:"
-    for r in "${INSTALLED[@]}"; do echo "  - $r"; done
-    echo ""
-  fi
-
-  if [[ ${#UPTODATE[@]} -gt 0 ]]; then
-    echo "Already up to date:"
-    for r in "${UPTODATE[@]}"; do echo "  - $r"; done
-    echo ""
-  fi
-
-  if [[ ${#FAILED[@]} -gt 0 ]]; then
-    echo "Failed:"
-    for r in "${FAILED[@]}"; do echo "  - $r"; done
-    echo ""
-  fi
-
-  if [[ ${#SKIPPED[@]} -gt 0 ]]; then
-    echo "Skipped:"
-    for r in "${SKIPPED[@]}"; do echo "  - $r"; done
-    echo ""
-  fi
+  printf 'Installed/updated: %s\n' "${#INSTALLED[@]}"
+  printf 'Already up to date: %s\n' "${#UPTODATE[@]}"
+  printf 'Skipped: %s\n' "${#SKIPPED[@]}"
+  printf 'Failed: %s\n' "${#FAILED[@]}"
 
   if [[ ${#PR_URLS[@]} -gt 0 ]]; then
-    echo "PR URLs:"
-    for r in "${PR_URLS[@]}"; do echo "  - $r"; done
     echo ""
+    echo "PRs:"
+    printf '  - %s\n' "${PR_URLS[@]}"
   fi
-
-  # branch protection guidance
-  echo "---"
-  echo "Next steps for each installed repo:"
-  echo ""
-  echo "1. Enable 'Governance Checks' as required check in branch protection:"
-  echo "   Settings > Branches > Add rule > main"
-  echo "   - Require status checks to pass before merging"
-  echo "   - Search and select 'Governance Checks'"
-  echo "   - Require existing typecheck/build checks if present"
-  echo ""
-  echo "2. Recommended ruleset:"
-  echo "   - PR must link to a GitHub Issue"
-  echo "   - System-impacting PRs must update docs"
-  echo "   - Required checks must pass before merge"
-  echo "   - Block direct push to main"
-  echo ""
+  if [[ ${#FAILED[@]} -gt 0 ]]; then
+    echo ""
+    echo "Failures:"
+    printf '  - %s\n' "${FAILED[@]}"
+    return 1
+  fi
 }
 
-main "$@"
+parse_args "$@"
+preflight
+
+for repo in "${REPOS[@]}"; do
+  install_one "$repo"
+done
+
+summary

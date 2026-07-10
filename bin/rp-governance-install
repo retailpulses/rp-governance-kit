@@ -43,7 +43,7 @@ preflight() {
   if ! gh auth status &>/dev/null; then
     die "gh CLI not authenticated. Run 'gh auth login' first."
   fi
-  for script in rp-issue-create rp-issue-audit rp-issue-work rp-issue-closeout; do
+  for script in rp-issue-create rp-issue-audit rp-issue-work rp-issue-closeout rp-deploy-closeout rp-repo-housekeeping; do
     [[ -f "$KIT_DIR/templates/bin/$script" ]] || die "Missing kit template: templates/bin/$script"
   done
 }
@@ -134,6 +134,9 @@ is_up_to_date() {
     "docs/12_DATA_ACCESS_AND_SECRETS.md"
     "docs/13_PLATFORM_DEPENDENCY_POLICY.md"
     "docs/14_ISSUE_GOVERNANCE.md"
+    "docs/15_DEPLOYMENT_AND_HOUSEKEEPING.md"
+    "bin/rp-deploy-closeout"
+    "bin/rp-repo-housekeeping"
   )
   local f
   for f in "${expected_files[@]}"; do
@@ -148,7 +151,7 @@ copy_files() {
   mkdir -p bin .github .github/workflows docs
 
   local script
-  for script in rp-issue-create rp-issue-audit rp-issue-work rp-issue-closeout; do
+  for script in rp-issue-create rp-issue-audit rp-issue-work rp-issue-closeout rp-deploy-closeout rp-repo-housekeeping; do
     cp "$KIT_DIR/templates/bin/$script" "bin/$script"
     chmod +x "bin/$script"
   done
@@ -156,8 +159,13 @@ copy_files() {
   cp "$KIT_DIR/templates/github/pull_request_template.md" ".github/pull_request_template.md"
   sed "s/__REF__/$KIT_REF/g" "$KIT_DIR/templates/github/workflows/governance-checks-wrapper.yml" > ".github/workflows/governance-checks.yml"
 
+  local wrapper_src="$KIT_DIR/templates/github/workflows/post-deploy-governance-wrapper.yml"
+  if [[ -f "$wrapper_src" ]]; then
+    sed "s/__REF__/$KIT_REF/g" "$wrapper_src" > ".github/workflows/post-deploy-governance.yml" 2>/dev/null || true
+  fi
+
   local doc
-  for doc in 00_CURRENT_STATE.md 05_DECISION_LOG.md 10_ENGINEERING_PRINCIPLES.md 11_FRONTEND_STANDARDS.md 12_DATA_ACCESS_AND_SECRETS.md 13_PLATFORM_DEPENDENCY_POLICY.md 14_ISSUE_GOVERNANCE.md; do
+  for doc in 00_CURRENT_STATE.md 05_DECISION_LOG.md 10_ENGINEERING_PRINCIPLES.md 11_FRONTEND_STANDARDS.md 12_DATA_ACCESS_AND_SECRETS.md 13_PLATFORM_DEPENDENCY_POLICY.md 14_ISSUE_GOVERNANCE.md 15_DEPLOYMENT_AND_HOUSEKEEPING.md; do
     if [[ ! -f "docs/$doc" || "$FORCE" == true ]]; then
       cp "$KIT_DIR/templates/docs/$doc" "docs/$doc"
       echo "Installed docs/$doc"

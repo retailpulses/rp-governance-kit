@@ -71,6 +71,7 @@ is_up_to_date() {
     ".github/workflows/governance-checks.yml"
     ".github/pull_request_template.md"
     "bin/rp-issue-create"
+    "bin/rp-issue-audit"
     "bin/rp-issue-work"
     "bin/rp-issue-closeout"
   )
@@ -152,7 +153,7 @@ install_one() {
 
   # bin scripts
   mkdir -p bin
-  for script in rp-issue-create rp-issue-work rp-issue-closeout; do
+  for script in rp-issue-create rp-issue-audit rp-issue-work rp-issue-closeout; do
     cp "$KIT_DIR/templates/bin/$script" "bin/$script"
     chmod +x "bin/$script"
   done
@@ -208,7 +209,7 @@ install_one() {
 Install centralized governance kit from $KIT_REPO@$KIT_REF.
 
 Adds:
-- bin/rp-issue-create, rp-issue-work, rp-issue-closeout
+- bin/rp-issue-create, rp-issue-audit, rp-issue-work, rp-issue-closeout
 - .github/pull_request_template.md
 - .github/workflows/governance-checks.yml (wrapper)
 - docs/00_CURRENT_STATE.md, docs/05_DECISION_LOG.md (if missing)
@@ -246,6 +247,7 @@ This standardizes:
 ## Files added
 
 - \`bin/rp-issue-create\` — create standardized GitHub Issues
+- \`bin/rp-issue-audit\` — audit existing Issues for governance completeness
 - \`bin/rp-issue-work\` — prepare agent context for an Issue
 - \`bin/rp-issue-closeout\` — pre-PR governance checks
 - \`.github/pull_request_template.md\` — standardized PR template

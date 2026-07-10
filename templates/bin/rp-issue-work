@@ -1,21 +1,87 @@
 #!/usr/bin/env bash
-# rp-issue-work — prepare the agent to work on an existing GitHub Issue
+# rp-issue-work - prepare the agent to work on an existing GitHub Issue
 set -euo pipefail
 
-ISSUE_NUMBER="${1:-}"
-if [[ -z "$ISSUE_NUMBER" ]]; then
-  echo "Usage: bin/rp-issue-work <issue-number>"
+ISSUE_NUMBER=""
+ALLOW_NONCOMPLIANT=false
+
+usage() {
+  cat <<-USAGE
+Usage: bin/rp-issue-work <issue-number> [options]
+
+Options:
+  --allow-noncompliant-issue  Continue even if the Issue fails governance audit.
+  --help                      Show this help.
+USAGE
+}
+
+die() {
+  echo "Error: $*" >&2
   exit 1
-fi
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --help|-h)
+      usage
+      exit 0
+      ;;
+    --allow-noncompliant-issue)
+      ALLOW_NONCOMPLIANT=true
+      shift
+      ;;
+    -*)
+      die "Unknown option: $1"
+      ;;
+    *)
+      if [[ -n "$ISSUE_NUMBER" ]]; then
+        die "Only one issue number is allowed"
+      fi
+      ISSUE_NUMBER="$1"
+      shift
+      ;;
+  esac
+done
+
+[[ -n "$ISSUE_NUMBER" ]] || {
+  usage
+  exit 1
+}
 
 if ! command -v gh &>/dev/null; then
-  echo "Error: gh CLI is not installed or not in PATH"
-  exit 1
+  die "gh CLI is not installed or not in PATH"
+fi
+
+if ! gh auth status &>/dev/null; then
+  die "gh CLI is not authenticated. Run 'gh auth login' first."
+fi
+
+mkdir -p .tmp
+
+echo "=== Auditing issue governance for #$ISSUE_NUMBER ==="
+if [[ -x "bin/rp-issue-audit" ]]; then
+  if ! bin/rp-issue-audit "$ISSUE_NUMBER" --fix-draft; then
+    if [[ "$ALLOW_NONCOMPLIANT" != true ]]; then
+      echo ""
+      echo "Issue #$ISSUE_NUMBER failed governance audit."
+      echo "Coding must not start from a non-compliant Issue."
+      echo "Correction draft: .tmp/issue-correction-$ISSUE_NUMBER.md"
+      echo ""
+      echo "Correct the Issue first, then rerun:"
+      echo "  bin/rp-issue-work $ISSUE_NUMBER"
+      echo ""
+      echo "Override only with explicit approval:"
+      echo "  bin/rp-issue-work $ISSUE_NUMBER --allow-noncompliant-issue"
+      exit 1
+    fi
+    echo "WARN: Continuing despite non-compliant Issue because --allow-noncompliant-issue was provided."
+  fi
+else
+  die "bin/rp-issue-audit is missing. Reinstall or update the governance kit before starting work."
 fi
 
 if ! git diff --quiet || ! git diff --cached --quiet; then
-  echo "Error: Working tree is not clean. Commit or stash your changes first."
-  exit 1
+  die "Working tree is not clean. Commit or stash your changes first."
 fi
 
 echo "=== Fetching issue #$ISSUE_NUMBER ==="
@@ -23,16 +89,22 @@ gh issue view "$ISSUE_NUMBER" --json title,body,labels,state > ".tmp/issue-$ISSU
 gh issue view "$ISSUE_NUMBER" --json title,body,labels,state --jq '.title' > ".tmp/issue-$ISSUE_NUMBER-title.txt"
 
 TITLE=$(cat ".tmp/issue-$ISSUE_NUMBER-title.txt")
-echo "Issue: #$ISSUE_NUMBER — $TITLE"
+echo "Issue: #$ISSUE_NUMBER - $TITLE"
 echo ""
 
 BRIEF=".tmp/agent-work-brief-$ISSUE_NUMBER.md"
 
-cat > "$BRIEF" <<- BRIEF_HEADER
-# Agent Work Brief — Issue #$ISSUE_NUMBER
+cat > "$BRIEF" <<-BRIEF_HEADER
+# Agent Work Brief - Issue #$ISSUE_NUMBER
 
 ## Issue
 $TITLE
+
+## Issue governance
+
+- Coding must not start from a non-compliant Issue.
+- If the Issue does not follow governance structure, correct the Issue before implementation.
+- Issue audit status before work: $(cat ".tmp/issue-audit-$ISSUE_NUMBER.status" 2>/dev/null || echo "unknown")
 
 ## Required documents to read
 
@@ -55,7 +127,7 @@ echo "## Suggested branch" >> "$BRIEF"
 echo "\`$BRANCH\`" >> "$BRIEF"
 echo "" >> "$BRIEF"
 
-cat >> "$BRIEF" <<- BRIEF_REMINDERS
+cat >> "$BRIEF" <<-'BRIEF_REMINDERS'
 ## Reminders
 
 1. **Scope**: Keep the change scoped to this Issue. Do not add unrelated refactoring or features.
@@ -67,7 +139,7 @@ cat >> "$BRIEF" <<- BRIEF_REMINDERS
    - Architecture
    - Operating workflow
    - Agent workflow
-4. **Pre-PR**: Run \`bin/rp-issue-closeout $ISSUE_NUMBER\` before opening a PR.
+4. **Pre-PR**: Run `bin/rp-issue-closeout $ISSUE_NUMBER` before opening a PR.
 
 BRIEF_REMINDERS
 

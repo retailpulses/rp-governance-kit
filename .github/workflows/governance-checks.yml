@@ -1,0 +1,67 @@
+name: Governance Checks
+
+on:
+  workflow_call:
+
+jobs:
+  issue-link-check:
+    name: Issue Link Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check PR references a GitHub Issue
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          COMBINED="$PR_TITLE
+$PR_BODY"
+
+          if echo "$COMBINED" | grep -qiE '(Refs|Related to|Issue|Closes|Fixes|Resolves) #[0-9]+'; then
+            echo "Issue reference found: OK"
+          else
+            echo "::error::This PR does not reference a GitHub Issue."
+            echo "::error::Add one of the following to the PR title or body:"
+            echo "::error::  Refs #123"
+            echo "::error::  Related to #123"
+            echo "::error::  Issue #123"
+            echo "::error::  Closes #123"
+            echo "::error::  Fixes #123"
+            echo "::error::  Resolves #123"
+            exit 1
+          fi
+
+  docs-check:
+    name: Docs Impact Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for system-impacting changes without docs
+        run: |
+          CHANGED=$(git diff --name-only "${{ github.event.pull_request.base.sha }}"..."${{ github.event.pull_request.head.sha }}")
+
+          echo "=== Changed files ==="
+          echo "$CHANGED"
+          echo ""
+
+          SYSTEM_FILES=$(echo "$CHANGED" | grep -E '^(supabase/migrations/|src/.*schema|src/.*types|src/.*routes|apps/.*/pages/|apps/.*/routes/|AGENTS\.md|CLAUDE\.md)' || true)
+          DOCS_FILES=$(echo "$CHANGED" | grep -E '^docs/|^README\.md' || true)
+
+          if [ -n "$SYSTEM_FILES" ] && [ -z "$DOCS_FILES" ]; then
+            echo ""
+            echo "::error::System-impacting files changed but no documentation was updated."
+            echo "::error::Please update docs/00_CURRENT_STATE.md or docs/05_DECISION_LOG.md (or relevant docs)."
+            echo "::error::System-impacting files:"
+            echo "$SYSTEM_FILES" | while read -r line; do echo "::error::  $line"; done
+            exit 1
+          fi
+
+          if [ -n "$SYSTEM_FILES" ]; then
+            echo "System-impacting files changed, and docs were updated. OK."
+          else
+            echo "No system-impacting files changed. OK."
+          fi

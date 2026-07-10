@@ -1,0 +1,11 @@
+name: Event Test
+on:
+  workflow_call:
+
+jobs:
+  job:
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: echo "title=$PR_TITLE"

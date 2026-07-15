@@ -1,0 +1,270 @@
+# Database Ownership Registry
+# ============================
+# Canonical machine-readable domain ownership for Retailpulses shared Supabase.
+#
+# Version: 1
+# Last updated: 2026-07-15
+# Governance ref: v1.1.0
+#
+# Schema:
+#   database: logical database name (no project ref or URL)
+#   domains:
+#     <domain-name>:
+#       owner: <owner-repo>
+#       access_class: worker_only | authenticated_user | public_read | internal_admin
+#       generated_types: <path or "exempt">
+#       cross_domain: true | false
+#       shared: true | false
+#       consumers: [<repo>, ...]
+#       objects:
+#         tables: [<name>, ...]
+#         views: [<name>, ...]
+#         functions: [<name>, ...]
+#         storage_buckets: [<name>, ...]
+#       notes: <free-text technical debt or warnings>
+
+database: retailpulses_shared
+
+domains:
+
+  # ── Ticketing ─────────────────────────────────────────────
+  ticketing:
+    owner: retailpulses/ticket-handling
+    access_class: worker_only
+    generated_types: exempt  # Worker is sole Supabase client; types generated from API routes
+    cross_domain: false
+    shared: false
+    consumers:
+      - retailpulses/RPagentOS  # reads tickets for task linking
+    objects:
+      tables:
+        - ticket_issue_types
+        - tickets
+        - ticket_products
+        - ticket_messages
+        - ticket_notes
+        - ticket_attachments
+        - ticket_events
+        - ticket_resolution_actions
+        - ticket_statuses
+        - message_drafts
+        - sent_messages
+        - copywriting_logs
+        - customer_submissions
+        - submission_tokens
+        - inbound_ticket_messages
+      views: []
+      functions:
+        - generate_ticket_number
+        - update_updated_at_column
+        - claim_pending_inbound_messages
+        - record_ticket_resolution
+        - finalize_ticketform_submission
+        - finalize_operator_message_send
+      storage_buckets: []
+    notes: >
+      Mixed migration naming: 0001/0002 (grandfathered sequential) + timestamp-based.
+      18 zero-byte _remote.sql placeholder files for RPagentOS-authored migrations
+      on the shared database. These are history alignment artifacts, not ownership claims.
+
+  # ── Product Catalog & Platform Listings ───────────────────
+  product_catalog:
+    owner: retailpulses/RPagentOS
+    access_class: worker_only
+    generated_types: exempt  # Worker is sole Supabase client
+    cross_domain: false
+    shared: false
+    consumers:
+      - retailpulses/CatalogSync  # reads products, platform_listings, variants
+      - retailpulses/ticket-handling  # reads products for ticket association
+    objects:
+      tables:
+        - products
+        - product_variants
+        - platform_listings
+        - product_families
+        - product_spus
+        - product_assets
+        - product_commercials
+        - bundle_products
+        - bundle_components
+        - platform_listing_skus
+        - platform_listing_images
+        - platform_listing_attributes
+        - platform_listing_price_tiers
+        - product_platform_links
+        - promotion_candidates
+        - merchandising_focus_items
+        - source_import_runs
+        - source_import_rows
+        - platform_accounts
+        - import_errors
+      views:
+        - listing_target_classification_v1
+      functions:
+        - set_updated_at
+      storage_buckets: []
+    notes: >
+      Core product and platform listing data model. CatalogSync reads from these
+      tables through an internal Worker API, not direct Supabase client access.
+
+  # ── Agent OS ──────────────────────────────────────────────
+  agent_os:
+    owner: retailpulses/RPagentOS
+    access_class: worker_only
+    generated_types: exempt  # Worker is sole Supabase client
+    cross_domain: false
+    shared: false
+    consumers:
+      - retailpulses/ticket-handling  # reads agent decisions for ticket context
+    objects:
+      tables:
+        - agent_runs
+        - agent_decisions
+        - human_approvals
+        - agent_execution_logs
+      views: []
+      functions: []
+      storage_buckets: []
+    notes: >
+      Agent execution and decision tracking. Tightly coupled to RPagentOS workflows.
+
+  # ── Task Management ───────────────────────────────────────
+  task_management:
+    owner: retailpulses/RPagentOS
+    access_class: worker_only
+    generated_types: exempt
+    cross_domain: false
+    shared: true
+    consumers:
+      - retailpulses/ticket-handling  # ticket → task linking
+    objects:
+      tables:
+        - tasks
+        - task_targets
+        - task_steps
+        - task_comments
+        - task_logs
+        - task_select_options
+        - task_attachments
+      views: []
+      functions: []
+      storage_buckets: []
+    notes: >
+      Operational task management. Shared across repos for ticket-to-task linking.
+
+  # ── Project Management ────────────────────────────────────
+  project_management:
+    owner: retailpulses/RPagentOS
+    access_class: worker_only
+    generated_types: exempt
+    cross_domain: false
+    shared: true
+    consumers:
+      - retailpulses/ticket-handling  # duplicate migration present
+    objects:
+      tables:
+        - projects
+        - project_attachments
+      views: []
+      functions: []
+      storage_buckets: []
+    notes: >
+      DUPLICATE MIGRATION WARNING: 20260708000003_add_projects.sql exists in both
+      RPagentOS (canonical owner) and ticket-handling (near-identical copy, whitespace
+      diff only). ticket-handling copy should be converted to a _remote.sql placeholder
+      in a follow-up reconciliation. Do not create new project migrations in ticket-handling.
+
+  # ── Listing Intelligence ──────────────────────────────────
+  listing_intelligence:
+    owner: retailpulses/RPagentOS
+    access_class: worker_only
+    generated_types: exempt
+    cross_domain: false
+    shared: false
+    consumers: []
+    objects:
+      tables:
+        - listing_intelligence_runs
+        - listing_intelligence_results
+        - listing_work_items
+      views: []
+      functions: []
+      storage_buckets: []
+    notes: >
+      Listing intelligence workbench MVP. The browser client writes work_items with
+      the anon key (no-RLS MVP pattern — documented technical debt).
+
+  # ── Listing Quality Engineering ───────────────────────────
+  listing_quality:
+    owner: retailpulses/RPagentOS
+    access_class: worker_only
+    generated_types: exempt
+    cross_domain: false
+    shared: false
+    consumers:
+      - retailpulses/ticket-handling  # reads listing_review_schedule_status_v1 view
+    objects:
+      tables:
+        - listing_qwen_reviews
+        - listing_qwen_review_requests
+        - listing_review_policies
+        - listing_review_jobs
+        - listing_quality_cycles
+      views:
+        - listing_review_schedule_status_v1
+      functions: []
+      storage_buckets: []
+    notes: >
+      DUPLICATE MIGRATION WARNING: 20260708000002_listing_review_schedule_status.sql
+      exists in both RPagentOS (canonical owner) and ticket-handling (near-identical copy,
+      whitespace diff only). The listing_review_schedule_status_v1 view is consumed by
+      ticket-handling's dashboard. ticket-handling copy should be converted to a
+      _remote.sql placeholder in a follow-up reconciliation.
+
+  # ── Order Management ──────────────────────────────────────
+  order_management:
+    owner: retailpulses/OrderMgmt
+    access_class: worker_only
+    generated_types: exempt  # Worker is sole Supabase client
+    cross_domain: false
+    shared: false
+    consumers: []
+    objects:
+      tables:
+        - sales_orders
+        - giga_shipment_projections
+        - sales_order_message_state
+        - order_message_templates
+        - pipeline_run_log
+      views: []
+      functions: []
+      storage_buckets: []
+    notes: >
+      TIMESTAMP COLLISION WARNING: 20260710000000 is used for order_mgmt_core.sql
+      (this repo) AND inbound_ticket_messages.sql (ticket-handling) — different SQL.
+      This is a real naming collision. Both migrations already exist on the hosted
+      database. Do not rename either without a reviewed reconciliation plan.
+      RLS policies exist on all tables (operator-read pattern). Access class is
+      worker_only because the Worker uses service_role for writes; the operator
+      policies support a future admin dashboard.
+
+  # ── Catalog Synchronization ───────────────────────────────
+  catalog_sync:
+    owner: retailpulses/CatalogSync
+    access_class: worker_only
+    generated_types: exempt  # Accesses Supabase through internal Worker API only
+    cross_domain: false
+    shared: false
+    consumers: []
+    objects:
+      tables: []  # No owned tables — consumer of product_catalog domain
+      views: []
+      functions: []
+      storage_buckets: []
+    notes: >
+      CatalogSync is a database consumer without migration ownership. It reads
+      product_catalog domain tables through an internal Worker API (not direct
+      Supabase client access). No supabase/ directory. No migration checks needed.
+      Marked as owner for the catalog_sync domain to record responsibility for
+      sync state tables that may be created in the future.

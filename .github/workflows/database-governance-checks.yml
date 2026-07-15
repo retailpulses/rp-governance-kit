@@ -1,0 +1,464 @@
+name: Database Governance Checks
+
+on:
+  workflow_call:
+
+jobs:
+  migration-naming:
+    name: Migration Naming
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check new migration file naming
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
+
+          NEW_MIGRATIONS=$(git diff --name-only --diff-filter=A "$BASE"..."$HEAD" -- 'supabase/migrations/*.sql' || true)
+
+          if [[ -z "$NEW_MIGRATIONS" ]]; then
+            echo "No new migration files: OK"
+            exit 0
+          fi
+
+          echo "=== New migration files ==="
+          echo "$NEW_MIGRATIONS"
+
+          FAILED=0
+          while IFS= read -r migration; do
+            [[ -z "$migration" ]] && continue
+            fname=$(basename "$migration")
+            if ! echo "$fname" | grep -qE '^[0-9]{14}_[a-z0-9_]+\.sql$'; then
+              echo "::error file=$migration::Migration filename does not match required pattern: YYYYMMDDHHMMSS_description.sql"
+              echo "::error file=$migration::Got: $fname"
+              FAILED=1
+            fi
+          done <<< "$NEW_MIGRATIONS"
+
+          if [[ "$FAILED" -eq 1 ]]; then
+            echo "::error::One or more new migration files have invalid names."
+            exit 1
+          fi
+
+          echo "All new migration filenames valid: OK"
+
+  duplicate-timestamps-local:
+    name: Duplicate Timestamps (Local)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for duplicate timestamps in new migrations
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
+
+          # Get timestamp prefixes from new migration files
+          NEW_MIGRATIONS=$(git diff --name-only --diff-filter=A "$BASE"..."$HEAD" -- 'supabase/migrations/*.sql' || true)
+
+          if [[ -z "$NEW_MIGRATIONS" ]]; then
+            echo "No new migration files: OK"
+            exit 0
+          fi
+
+          # Check for duplicates among new files
+          DUPS=$(echo "$NEW_MIGRATIONS" | while IFS= read -r f; do
+            basename "$f" | grep -oE '^[0-9]{14}'
+          done | sort | uniq -d)
+
+          if [[ -n "$DUPS" ]]; then
+            echo "::error::Duplicate migration timestamps found among new files: $DUPS"
+            exit 1
+          fi
+
+          # Check new timestamps against existing files in the repo
+          while IFS= read -r new_migration; do
+            [[ -z "$new_migration" ]] && continue
+            new_ts=$(basename "$new_migration" | grep -oE '^[0-9]{14}' || true)
+            [[ -z "$new_ts" ]] && continue
+
+            # Check all existing files in the repo for this timestamp
+            EXISTING=$(git ls-files 'supabase/migrations/'"$new_ts"'_*.sql' 2>/dev/null || true)
+            # Count how many have this prefix (should be exactly 1 - the new file itself)
+            COUNT=$(echo "$EXISTING" | wc -l | tr -d ' ')
+            if [[ "$COUNT" -gt 1 ]]; then
+              echo "::error file=$new_migration::Timestamp $new_ts already exists in repository."
+              echo "::error::Existing files with this timestamp:"
+              echo "$EXISTING" | while read -r ef; do
+                echo "::error::  $ef"
+              done
+              exit 1
+            fi
+          done <<< "$NEW_MIGRATIONS"
+
+          echo "No duplicate timestamps among new migrations: OK"
+
+  migration-docs-impact:
+    name: Migration Docs Impact
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check docs updated with migrations
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
+
+          CHANGED=$(git diff --name-only "$BASE"..."$HEAD")
+
+          MIGRATION_FILES=$(echo "$CHANGED" | grep 'supabase/migrations/' || true)
+          DOCS_FILES=$(echo "$CHANGED" | grep -E '^docs/|^README\.md' || true)
+          GOV_REF=$(echo "$CHANGED" | grep 'docs/16_DATABASE_GOVERNANCE' || true)
+
+          if [[ -n "$MIGRATION_FILES" ]]; then
+            # Check governance reference is installed
+            if [[ ! -f "docs/16_DATABASE_GOVERNANCE.md" ]]; then
+              echo "::error::Migration files changed but docs/16_DATABASE_GOVERNANCE.md is not installed."
+              echo "::error::Install the governance kit before making database changes."
+              exit 1
+            fi
+
+            # Check docs are updated
+            if [[ -z "$DOCS_FILES" ]]; then
+              echo "::error::Migration files changed but no documentation was updated."
+              echo "::error::Please update docs/00_CURRENT_STATE.md or docs/05_DECISION_LOG.md."
+              exit 1
+            fi
+
+            echo "Migration files and docs both present: OK"
+          else
+            echo "No migration files changed: OK"
+          fi
+
+  secret-detection:
+    name: Secret Detection
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for likely secrets in tracked files
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
+
+          CHANGED=$(git diff --name-only "$BASE"..."$HEAD" || true)
+
+          if [[ -z "$CHANGED" ]]; then
+            echo "No changed files: OK"
+            exit 0
+          fi
+
+          FAILED=0
+
+          # Patterns for likely live secrets (not placeholders)
+          # service_role key: typically starts with "eyJ" and is long
+          # Database URL: supabase.co with project ref
+          # Anon key: starts with "eyJ"
+          # Access tokens: sbp_ followed by hex
+
+          SECRET_PATTERNS=(
+            'supabase\.co/[a-z]{20,}'
+            'service_role["\s:=]+eyJ[A-Za-z0-9_-]{20,}'
+            'sbp_[a-f0-9]{32,}'
+          )
+
+          # Placeholders that are OK
+          ALLOWED=(
+            'your-project-ref'
+            'YOUR_SUPABASE'
+            'placeholder'
+            'example'
+            'xxxx'
+            'TODO'
+            'YOUR_PROJECT'
+            '__REF__'
+          )
+
+          while IFS= read -r file; do
+            [[ -z "$file" ]] && continue
+            [[ ! -f "$file" ]] && continue
+
+            for pattern in "${SECRET_PATTERNS[@]}"; do
+              MATCHES=$(grep -nE "$pattern" "$file" 2>/dev/null || true)
+              if [[ -n "$MATCHES" ]]; then
+                # Check if any match looks like a placeholder
+                IS_PLACEHOLDER=false
+                for allowed in "${ALLOWED[@]}"; do
+                  if echo "$MATCHES" | grep -qi "$allowed"; then
+                    IS_PLACEHOLDER=true
+                    break
+                  fi
+                done
+
+                if [[ "$IS_PLACEHOLDER" == false ]]; then
+                  while IFS= read -r match_line; do
+                    echo "::error file=$file::Likely live secret detected: $match_line"
+                  done <<< "$MATCHES"
+                  FAILED=1
+                fi
+              fi
+            done
+          done <<< "$CHANGED"
+
+          if [[ "$FAILED" -eq 1 ]]; then
+            echo "::error::Likely secrets detected. Remove or replace with placeholder values."
+            exit 1
+          fi
+
+          echo "No likely secrets detected: OK"
+
+  migration-header:
+    name: Migration Header Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check new migrations have required headers
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
+
+          NEW_MIGRATIONS=$(git diff --name-only --diff-filter=A "$BASE"..."$HEAD" -- 'supabase/migrations/*.sql' || true)
+
+          if [[ -z "$NEW_MIGRATIONS" ]]; then
+            echo "No new migration files: OK"
+            exit 0
+          fi
+
+          REQUIRED_HEADERS=(
+            "Domain:"
+            "Owner:"
+            "Affected:"
+            "Change class:"
+            "Hosted write required:"
+          )
+
+          FAILED=0
+          while IFS= read -r migration; do
+            [[ -z "$migration" ]] && continue
+
+            if [[ ! -f "$migration" ]]; then
+              echo "::warning file=$migration::New migration file not found on disk (may be deleted)."
+              continue
+            fi
+
+            for header in "${REQUIRED_HEADERS[@]}"; do
+              if ! head -20 "$migration" | grep -q "$header"; then
+                echo "::error file=$migration::Missing required migration header: $header"
+                FAILED=1
+              fi
+            done
+          done <<< "$NEW_MIGRATIONS"
+
+          if [[ "$FAILED" -eq 1 ]]; then
+            echo "::error::One or more new migrations missing required headers."
+            echo "::error::Required headers: Domain, Owner, Affected, Change class, Hosted write required, Consumers"
+            exit 1
+          fi
+
+          echo "All new migrations have required headers: OK"
+
+  cross-domain-owner:
+    name: Cross-Domain Owner Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check migration ownership matches repository
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
+
+          NEW_MIGRATIONS=$(git diff --name-only --diff-filter=A "$BASE"..."$HEAD" -- 'supabase/migrations/*.sql' || true)
+
+          if [[ -z "$NEW_MIGRATIONS" ]]; then
+            echo "No new migration files: OK"
+            exit 0
+          fi
+
+          # Derive expected owner from repo
+          REPO_NAME=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+
+          # Check if repo has a local declaration
+          if [[ -f "docs/16_DATABASE_GOVERNANCE.local.md" ]]; then
+            DECLARED_OWNER=$(grep -i "migration owner:" docs/16_DATABASE_GOVERNANCE.local.md 2>/dev/null | head -1 || true)
+          else
+            DECLARED_OWNER=""
+          fi
+
+          FAILED=0
+          while IFS= read -r migration; do
+            [[ -z "$migration" ]] && continue
+            [[ ! -f "$migration" ]] && continue
+
+            # Extract Owner: from migration header
+            MIG_OWNER=$(head -20 "$migration" | grep -E '^-- Owner:' | sed 's/-- Owner:[[:space:]]*//' | xargs || true)
+
+            if [[ -n "$MIG_OWNER" ]]; then
+              MIG_OWNER_LOWER=$(echo "$MIG_OWNER" | tr '[:upper:]' '[:lower:]')
+              if [[ "$MIG_OWNER_LOWER" != *"$REPO_NAME"* ]]; then
+                # Migration declares a different owner than this repo
+                # Check for cross-domain exception marker
+                HAS_EXCEPTION=false
+                if grep -qE '-- Cross-domain exception:|cross.domain.exception' "$migration" 2>/dev/null; then
+                  HAS_EXCEPTION=true
+                fi
+
+                # Check PR body for Issue reference
+                PR_BODY="${{ github.event.pull_request.body }}"
+                HAS_ISSUE_REF=$(echo "$PR_BODY" | grep -cE '(Refs|Closes|Fixes|Resolves)[[:space:]]+#[0-9]+' || true)
+
+                if [[ "$HAS_EXCEPTION" == false ]]; then
+                  echo "::error file=$migration::Migration declares owner '$MIG_OWNER' but this repository is '$REPO_NAME'."
+                  echo "::error file=$migration::Add '-- Cross-domain exception: <Issue ref>' header or correct the owner."
+                  FAILED=1
+                elif [[ "$HAS_ISSUE_REF" -eq 0 ]]; then
+                  echo "::warning file=$migration::Cross-domain exception present but no Issue reference found in PR."
+                else
+                  echo "Cross-domain exception with Issue reference found in $migration: OK"
+                fi
+              fi
+            fi
+          done <<< "$NEW_MIGRATIONS"
+
+          if [[ "$FAILED" -eq 1 ]]; then
+            exit 1
+          fi
+
+          echo "Migration ownership check: OK"
+
+  # ── Non-blocking warnings ─────────────────────────────────────
+
+  migration-warnings:
+    name: Migration Warnings
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for quality warnings
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
+
+          CHANGED_MIGRATIONS=$(git diff --name-only "$BASE"..."$HEAD" -- 'supabase/migrations/*.sql' || true)
+          WARNINGS=0
+
+          # 1. Empty migration files
+          while IFS= read -r migration; do
+            [[ -z "$migration" ]] && continue
+            [[ ! -f "$migration" ]] && continue
+            if [[ ! -s "$migration" ]]; then
+              echo "::warning file=$migration::Empty migration file detected."
+              WARNINGS=$((WARNINGS + 1))
+            fi
+          done <<< "$CHANGED_MIGRATIONS"
+
+          # 2. Remote-only migration placeholders
+          while IFS= read -r migration; do
+            [[ -z "$migration" ]] && continue
+            fname=$(basename "$migration")
+            if echo "$fname" | grep -q '_remote\.sql$'; then
+              if [[ -s "$migration" ]]; then
+                echo "::warning file=$migration::_remote.sql file contains content. Remote history files should be empty or contain only comments."
+                WARNINGS=$((WARNINGS + 1))
+              fi
+            fi
+          done <<< "$CHANGED_MIGRATIONS"
+
+          # 3. Check for CLI version recording
+          if [[ -n "$CHANGED_MIGRATIONS" ]]; then
+            if [[ -f "docs/16_DATABASE_GOVERNANCE.local.md" ]]; then
+              if ! grep -qE '(supabase.cli|CLI version)' docs/16_DATABASE_GOVERNANCE.local.md 2>/dev/null; then
+                echo "::warning::Supabase CLI version not recorded in docs/16_DATABASE_GOVERNANCE.local.md."
+                WARNINGS=$((WARNINGS + 1))
+              fi
+            fi
+          fi
+
+          # 4. Check for missing access class declaration
+          if [[ -n "$CHANGED_MIGRATIONS" ]]; then
+            while IFS= read -r migration; do
+              [[ -z "$migration" ]] && continue
+              [[ ! -f "$migration" ]] && continue
+              if head -20 "$migration" | grep -qE 'CREATE TABLE'; then
+                if [[ -f "docs/16_DATABASE_GOVERNANCE.local.md" ]]; then
+                  if ! grep -qE 'access.class|access_class' docs/16_DATABASE_GOVERNANCE.local.md 2>/dev/null; then
+                    echo "::warning file=$migration::New table created but no access class declaration found in docs/16_DATABASE_GOVERNANCE.local.md."
+                    WARNINGS=$((WARNINGS + 1))
+                  fi
+                fi
+              fi
+            done <<< "$CHANGED_MIGRATIONS"
+          fi
+
+          # 5. Check for generated types alongside migrations
+          if [[ -n "$CHANGED_MIGRATIONS" ]]; then
+            TYPE_FILES=$(echo "$(git diff --name-only "$BASE"..."$HEAD")" | grep -E 'types|database\.ts|supabase\.ts' || true)
+            if [[ -z "$TYPE_FILES" ]]; then
+              if [[ -f "docs/16_DATABASE_GOVERNANCE.local.md" ]]; then
+                if grep -qE 'generated.types.*exempt' docs/16_DATABASE_GOVERNANCE.local.md 2>/dev/null; then
+                  echo "Generated types exempt: OK"
+                else
+                  echo "::warning::Migration files changed but no generated type files were updated."
+                  echo "::warning::If this repo generates types, update them. If exempt, declare exemption in docs/16_DATABASE_GOVERNANCE.local.md."
+                  WARNINGS=$((WARNINGS + 1))
+                fi
+              fi
+            fi
+          fi
+
+          if [[ "$WARNINGS" -gt 0 ]]; then
+            echo "::warning::$WARNINGS migration warning(s) found. Review and address where applicable."
+          else
+            echo "No migration warnings: OK"
+          fi
+
+  org-duplicate-timestamps:
+    name: Org-Wide Duplicate Timestamps
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Scan for org-wide duplicate timestamps
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
+
+          NEW_MIGRATIONS=$(git diff --name-only --diff-filter=A "$BASE"..."$HEAD" -- 'supabase/migrations/*.sql' || true)
+
+          if [[ -z "$NEW_MIGRATIONS" ]]; then
+            echo "No new migration files: OK"
+            exit 0
+          fi
+
+          echo "::warning::Organization-wide duplicate timestamp scan requires cross-repo access."
+          echo "::warning::New migration timestamps:"
+
+          while IFS= read -r migration; do
+            [[ -z "$migration" ]] && continue
+            ts=$(basename "$migration" | grep -oE '^[0-9]{14}' || true)
+            [[ -n "$ts" ]] && echo "::warning::  $ts - verify uniqueness across all Retailpulses repos"
+          done <<< "$NEW_MIGRATIONS"
+
+          echo ""
+          echo "Cross-repo timestamp verification must be performed manually or via a scheduled audit."
+          echo "See: docs/DATABASE_GOVERNANCE.md §12 (Audit Cadence)"

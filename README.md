@@ -17,7 +17,8 @@ Standardizes Issue-first development across Retailpulses repos:
 - **Engineering standards** - centralized templates for engineering principles, frontend, data access, platform dependencies, and Issue governance.
 - **Post-deploy governance** - deploy closeout reports and repo housekeeping via GitHub-native job summaries, PR/Issue comments, or artifacts.
 - **Docs impact tracking** - system changes without docs updates are flagged.
-- **Reusable CI** - central `governance-checks.yml` and `post-deploy-governance.yml` called by wrapper workflows.
+- **Reusable CI** - central `governance-checks.yml`, `database-governance-checks.yml`, and `post-deploy-governance.yml` called by wrapper workflows.
+- **Database governance** - canonical organization-level database policy, domain ownership registry, migration naming/quality rules, access classes, RLS policy, and hosted write safety.
 - **Rollout tooling** - installer and upgrade scripts for lightweight repo adoption.
 
 ## Issue Creation Rule
@@ -41,7 +42,7 @@ See [docs/ISSUE_GOVERNANCE.md](docs/ISSUE_GOVERNANCE.md).
 bin/rp-governance-install retailpulses/RPagentOS
 
 # Install a specific ref
-bin/rp-governance-install retailpulses/ticket-handling --ref v1
+bin/rp-governance-install retailpulses/ticket-handling --ref v1.1.0
 
 # Batch install file
 bin/rp-governance-install --repos repos.txt
@@ -50,15 +51,38 @@ bin/rp-governance-install --repos repos.txt
 bin/rp-governance-install retailpulses/RPagentOS --dry-run
 ```
 
+## Database Governance
+
+See [`docs/DATABASE_GOVERNANCE.md`](docs/DATABASE_GOVERNANCE.md) for the canonical organization-level database governance policy.
+
+The policy covers:
+- Domain ownership and migration authority
+- Migration naming and quality standards
+- Hosted write safety
+- Access classes and RLS requirements
+- Generated types policy
+- Environment separation
+- Audit cadence
+
+Domain ownership is declared in [`docs/DATABASE_OWNERSHIP.yaml`](docs/DATABASE_OWNERSHIP.yaml).
+
+After installation, each repository has:
+- `docs/16_DATABASE_GOVERNANCE.md` — local reference pointing to the canonical policy
+- `docs/16_DATABASE_GOVERNANCE.local.md` — (repo-created) repository-specific declarations
+- `.github/workflows/database-governance.yml` — thin wrapper calling the central reusable workflow
+
 ## Structure
 
 ```text
 rp-governance-kit/
 ├── .github/workflows/
 │   ├── governance-checks.yml                 # Central reusable workflow (blocking)
-│   └── post-deploy-governance.yml            # Central reusable workflow (non-blocking)
+│   ├── post-deploy-governance.yml            # Central reusable workflow (non-blocking)
+│   └── database-governance-checks.yml        # Central reusable workflow (database)
 ├── docs/
-│   └── ISSUE_GOVERNANCE.md                   # Issue-first governance policy
+│   ├── ISSUE_GOVERNANCE.md                   # Issue-first governance policy
+│   ├── DATABASE_GOVERNANCE.md                # Canonical database governance policy
+│   └── DATABASE_OWNERSHIP.yaml               # Domain ownership registry
 ├── templates/
 │   ├── bin/                                  # Agent scripts installed into target repos
 │   │   ├── rp-issue-create
@@ -75,12 +99,14 @@ rp-governance-kit/
 │   │   ├── 12_DATA_ACCESS_AND_SECRETS.md
 │   │   ├── 13_PLATFORM_DEPENDENCY_POLICY.md
 │   │   ├── 14_ISSUE_GOVERNANCE.md
-│   │   └── 15_DEPLOYMENT_AND_HOUSEKEEPING.md
+│   │   ├── 15_DEPLOYMENT_AND_HOUSEKEEPING.md
+│   │   └── 16_DATABASE_GOVERNANCE.md         # Installable database governance reference
 │   └── github/
 │       ├── pull_request_template.md          # PR template
 │       └── workflows/
-│           ├── governance-checks-wrapper.yml # Thin wrapper for target repos
-│           └── post-deploy-governance-wrapper.yml # Thin wrapper for target repos
+│           ├── governance-checks-wrapper.yml  # Thin wrapper for target repos
+│           ├── post-deploy-governance-wrapper.yml # Thin wrapper for target repos
+│           └── database-governance-wrapper.yml # Thin wrapper for database checks
 ├── bin/
 │   ├── rp-governance-install                 # Installer script
 │   ├── rp-issue-create                       # Local wrapper for the template command

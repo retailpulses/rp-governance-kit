@@ -127,6 +127,7 @@ is_up_to_date() {
   local dir="$1"
   local expected_files=(
     ".github/workflows/governance-checks.yml"
+    ".github/workflows/database-governance.yml"
     ".github/pull_request_template.md"
     "bin/rp-issue-create"
     "bin/rp-issue-audit"
@@ -162,6 +163,8 @@ copy_files() {
   if [[ -f "$wrapper_src" ]]; then
     sed "s/__REF__/$KIT_REF/g" "$wrapper_src" > ".github/workflows/post-deploy-governance.yml" 2>/dev/null || true
   fi
+
+  sed "s/__REF__/$KIT_REF/g" "$KIT_DIR/templates/github/workflows/database-governance-wrapper.yml" > ".github/workflows/database-governance.yml"
 
   local installed_at
   installed_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")

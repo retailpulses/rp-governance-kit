@@ -18,7 +18,7 @@ Standardizes Issue-first development across Retailpulses repos:
 - **Post-deploy governance** - deploy closeout reports and repo housekeeping via GitHub-native job summaries, PR/Issue comments, or artifacts.
 - **Docs impact tracking** - system changes without docs updates are flagged.
 - **Reusable CI** - central `governance-checks.yml`, `database-governance-checks.yml`, and `post-deploy-governance.yml` called by wrapper workflows.
-- **Database governance** - canonical organization-level database policy, domain ownership registry, migration naming/quality rules, access classes, RLS policy, and hosted write safety.
+- **Database governance** - canonical organization-level database policy, domain ownership registry, migration naming/quality rules, access classes, RLS policy, hosted write safety, runtime workload safety (N+1 prohibition, change-aware writes, access path declaration, rollout gates, run-health independence), incident response playbook, and workload registry.
 - **Rollout tooling** - installer and upgrade scripts for lightweight repo adoption.
 
 ## Issue Creation Rule
@@ -63,8 +63,21 @@ The policy covers:
 - Generated types policy
 - Environment separation
 - Audit cadence
+- Runtime workload safety (imports, syncs, backfills, scheduled jobs, agent operations, maintenance)
+- N+1 lookup prohibition with request-count budgets
+- Change-aware writes (no rewriting unchanged rows for per-row timestamps)
+- Access path declaration (internal_api, supavisor, postgrest, direct_postgres)
+- Scheduled workload release mapping to reviewed Git commits
+- Rollout gates for high-risk workloads (dry-run → canary → full run → healthy cycles)
+- Current-run health independence from historical alerts
+- Observability (requests, rows, batches, runtime, retries/dead letters, unchanged-write ratio)
+- Resource management (compute resize, downgrade gates, monitoring thresholds)
+- Safety controls (dry-run, batching, concurrency, timeouts, retries, kill switches, approval boundaries)
 
-Domain ownership is declared in [`docs/DATABASE_OWNERSHIP.yaml`](docs/DATABASE_OWNERSHIP.yaml).
+Supporting documents:
+- [`docs/DATABASE_OWNERSHIP.yaml`](docs/DATABASE_OWNERSHIP.yaml) — machine-readable domain ownership registry
+- [`docs/DATABASE_WORKLOADS.yaml`](docs/DATABASE_WORKLOADS.yaml) — machine-readable workload registry (safety controls per workload)
+- [`docs/DATABASE_INCIDENT_RESPONSE.md`](docs/DATABASE_INCIDENT_RESPONSE.md) — incident response playbook
 
 After installation, each repository has:
 - `docs/16_DATABASE_GOVERNANCE.md` — local reference pointing to the canonical policy
@@ -82,7 +95,9 @@ rp-governance-kit/
 ├── docs/
 │   ├── ISSUE_GOVERNANCE.md                   # Issue-first governance policy
 │   ├── DATABASE_GOVERNANCE.md                # Canonical database governance policy
-│   └── DATABASE_OWNERSHIP.yaml               # Domain ownership registry
+│   ├── DATABASE_OWNERSHIP.yaml               # Domain ownership registry
+│   ├── DATABASE_WORKLOADS.yaml               # Workload registry (safety controls)
+│   └── DATABASE_INCIDENT_RESPONSE.md         # Database incident response playbook
 ├── templates/
 │   ├── bin/                                  # Agent scripts installed into target repos
 │   │   ├── rp-issue-create

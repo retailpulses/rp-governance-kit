@@ -1,0 +1,276 @@
+# Database Workload Registry
+# ===========================
+# Canonical machine-readable registry of all recurring database workloads.
+# One-off workloads are declared in their originating Issue or work brief.
+#
+# Version: 3
+# Last updated: 2026-07-16
+# Governance ref: v1.4.0
+#
+# Schema per workload entry:
+#   workload_id: unique identifier (kebab-case)
+#   category: imports | syncs | backfills | scheduled_jobs | agent_operations | maintenance | diagnostics
+#   risk_level: low | medium | high
+#   domain: domain from DATABASE_OWNERSHIP.yaml
+#   description: human-readable description
+#   owner_repo: GitHub owner/repo that owns this workload
+#   status: active | disabled | pending_approval
+#   trigger: cron_expression | manual | event_driven | on_deploy
+#   affected_tables: [table_name, ...]
+#   expected_volume_rows_min: minimum expected row count per invocation
+#   expected_volume_rows_target: normal expected row count per invocation
+#   expected_volume_rows_max: maximum expected row count per invocation
+#   expected_request_count_min: minimum estimated request count per invocation
+#   expected_request_count_max: maximum estimated request count per invocation
+#   expected_runtime_seconds_max: expected runtime ceiling in seconds
+#   concurrency_max: maximum concurrent connections
+#   statement_timeout_ms: per-query timeout in milliseconds
+#   max_retries: maximum retries per unit of work
+#   retry_strategy: exponential_backoff_with_jitter | fixed_delay | none
+#   batch_size_min: min rows per INSERT/UPDATE/DELETE statement
+#   batch_size_max: max rows per INSERT/UPDATE/DELETE statement (must not exceed §13.3 limit)
+#   access_path: internal_api | supavisor | postgrest | direct_postgres
+#   source_repo: GitHub repo containing the workload source
+#   deployed_from: commit SHA or release tag of the deployed code
+#   kill_switch:
+#     method: worker_cancel | dashboard_session_terminate | sql_terminate_backend | deploy_rollback
+#     documented_at: where the kill-switch procedure is documented
+#     identifier: config key, cron name, or timer name that disables this workload
+#   request_budget:
+#     max_requests_per_invocation: absolute ceiling per run
+#     max_requests_per_1000_input_rows: requests per 1k input rows (must scale with input; formula must be documented)
+#     bulk_fetch_strategy: IN-clause-batch | bulk-endpoint | pagination-cursor | none
+#   change_aware_writes:
+#     enabled: true | false
+#     freshness_strategy: run_level | per_row (requires justification if per_row)
+#     unchanged_write_ratio_target: decimal (target; ratios above this trigger review)
+#   rollout_gates:
+#     dry_run_completed: true | false
+#     canary_completed: true | false
+#     canary_row_limit: integer
+#     healthy_cycles_required: integer
+#     healthy_cycles_completed: integer
+#     re_enable_approval: true | false (required if previously disabled by incident)
+#   expected_runtime_seconds: integer
+#   incident_ref: GitHub issue URL or #number if previously disabled
+#   monitoring:
+#     warning_thresholds: { connections_pct: 80, cpu_pct: 70, timeout_rate_pct: 5, retry_budget_pct: 30 }
+#     critical_thresholds: { connections_pct: 95, cpu_pct: 90, timeout_rate_pct: 15, retry_budget_pct: 50 }
+#   approved_by: who authorized this workload
+#   approved_at: YYYY-MM-DD
+#   last_reviewed: YYYY-MM-DD
+#   notes: free-text notes, dependencies, known limitations
+
+database: retailpulses_shared
+
+workloads:
+
+  # ── Example / Template Entry ───────────────────────────────────────────
+  # This entry is a documented example. It does not represent a real workload.
+  # Replace fields with actual workload data when registering a real workload.
+  example_nightly_cleanup:
+    category: scheduled_jobs
+    risk_level: medium
+    domain: example
+    description: "EXAMPLE — Replace with real workload description"
+    trigger: "0 3 * * *"
+    affected_tables:
+      - example_logs
+      - example_sessions
+    expected_volume_rows_min: 10000
+    expected_volume_rows_max: 50000
+    expected_request_count_min: 50
+    expected_request_count_max: 200
+    expected_runtime_seconds_max: 300
+    concurrency_max: 2
+    statement_timeout_ms: 30000
+    max_retries: 3
+    retry_strategy: exponential_backoff_with_jitter
+    batch_size_min: 500
+    batch_size_max: 1000
+    kill_switch:
+      method: worker_cancel
+      documented_at: "Issue or work brief URL"
+    monitoring:
+      warning_thresholds:
+        connections_pct: 80
+        cpu_pct: 70
+        timeout_rate_pct: 5
+        retry_budget_pct: 30
+      critical_thresholds:
+        connections_pct: 95
+        cpu_pct: 90
+        timeout_rate_pct: 15
+        retry_budget_pct: 50
+    approved_by: "EXAMPLE — infra authority"
+    approved_at: "2026-01-01"
+    last_reviewed: "2026-01-01"
+    notes: "EXAMPLE workload entry. Replace all fields before registering a real workload."
+
+  # ── Example / Sync Entry ───────────────────────────────────────────────
+  example_external_sync:
+    category: syncs
+    risk_level: high
+    domain: example
+    description: "EXAMPLE — Replace with real workload description"
+    trigger: "0 */6 * * *"
+    affected_tables:
+      - example_products
+      - example_inventory
+    expected_volume_rows_min: 50000
+    expected_volume_rows_max: 200000
+    expected_request_count_min: 200
+    expected_request_count_max: 800
+    expected_runtime_seconds_max: 1200
+    concurrency_max: 3
+    statement_timeout_ms: 60000
+    max_retries: 3
+    retry_strategy: exponential_backoff_with_jitter
+    batch_size_min: 1000
+    batch_size_max: 5000
+    kill_switch:
+      method: deploy_rollback
+      documented_at: "Issue or work brief URL"
+    monitoring:
+      warning_thresholds:
+        connections_pct: 80
+        cpu_pct: 70
+        timeout_rate_pct: 5
+        retry_budget_pct: 30
+      critical_thresholds:
+        connections_pct: 95
+        cpu_pct: 90
+        timeout_rate_pct: 15
+        retry_budget_pct: 50
+    approved_by: "EXAMPLE — domain owner + infra authority"
+    approved_at: "2026-01-01"
+    last_reviewed: "2026-01-01"
+    notes: "EXAMPLE workload entry. High-risk sync workloads require both domain owner and infra authority approval."
+
+  # ── CatalogSync Product Mirror ─────────────────────────────────────────
+  catalogsync_product_mirror:
+    owner_repo: retailpulses/CatalogSync
+    category: syncs
+    risk_level: high
+    domain: product_catalog
+    status: disabled
+    description: >
+      Product catalog mirror — reads product data from RPagentOS internal
+      Worker API and writes to catalog_sync domain tables. Disabled due to
+      resource-exhaustion incident #23.
+    trigger: manual  # timer disabled; re-enable requires explicit approval
+    affected_tables:
+      - products
+      - product_variants
+      - platform_listings
+    expected_volume_rows_min: 5570
+    expected_volume_rows_target: 5570
+    expected_volume_rows_max: 5570
+    expected_request_count_min: 10
+    expected_request_count_max: 100
+    expected_runtime_seconds_max: 600
+    concurrency_max: 2
+    statement_timeout_ms: 30000
+    max_retries: 3
+    retry_strategy: exponential_backoff_with_jitter
+    batch_size_min: 100
+    batch_size_max: 250
+    access_path: internal_api
+    source_repo: retailpulses/CatalogSync
+    deployed_from: ""  # must be populated when re-enabled
+    kill_switch:
+      method: worker_cancel
+      documented_at: "retailpulses/CatalogSync#23"
+      identifier: catalogsync.timer
+    request_budget:
+      max_requests_per_invocation: 100
+      max_requests_per_1000_input_rows: 18
+      bulk_fetch_strategy: bulk-endpoint
+    change_aware_writes:
+      enabled: true
+      freshness_strategy: run_level
+      unchanged_write_ratio_target: 0.0
+    rollout_gates:
+      dry_run_completed: false
+      canary_completed: false
+      canary_row_limit: 100
+      healthy_cycles_required: 2
+      healthy_cycles_completed: 0
+      re_enable_approval: true
+    approved_by: "Requires explicit re-approval after incident #23 remediation"
+    approved_at: ""
+    last_reviewed: ""
+    incident_ref: "retailpulses/CatalogSync#23"
+    notes: >
+      Disabled after resource-exhaustion incident #23. Re-enable requires:
+      (1) explicit infra authority approval,
+      (2) access path verified as internal_api (not direct database),
+      (3) batch size bounded to 100-250, request budget to tens/low hundreds,
+      (4) change-aware writes with run-level freshness,
+      (5) all rollout gates completed in sequence,
+      (6) deployed from a reviewed Git commit (no untracked VPS source).
+    monitoring:
+      warning_thresholds:
+        connections_pct: 80
+        cpu_pct: 70
+        timeout_rate_pct: 5
+        retry_budget_pct: 30
+      critical_thresholds:
+        connections_pct: 95
+        cpu_pct: 90
+        timeout_rate_pct: 15
+        retry_budget_pct: 50
+
+# ── Documentation for New Entries ────────────────────────────────────────
+#
+# Required fields for every real workload entry:
+#   workload_id                          — unique identifier (kebab-case, no "example_" prefix for real entries)
+#   owner_repo                           — GitHub owner/repo that owns this workload
+#   category                             — one of: imports, syncs, backfills, scheduled_jobs, agent_operations, maintenance, diagnostics
+#   risk_level                           — low, medium, high
+#   status                               — active, disabled, or pending_approval
+#   domain                               — must match a declared domain in DATABASE_OWNERSHIP.yaml
+#   description                          — human-readable explanation of what this workload does
+#   trigger                              — cron expression, "manual", "event_driven", or "on_deploy"
+#   affected_tables                      — list of tables touched (reads or writes)
+#   expected_volume_rows_min               — minimum estimated rows per invocation
+#   expected_volume_rows_max               — maximum estimated rows per invocation
+#   expected_request_count_min             — minimum estimated request count per invocation
+#   expected_request_count_max             — maximum estimated request count per invocation
+#   expected_runtime_seconds_max           — expected runtime ceiling in seconds
+#   concurrency_max                        — max concurrent database connections
+#   statement_timeout_ms                   — per-query timeout in ms
+#   max_retries                            — max retries per unit of work
+#   retry_strategy                         — exponential_backoff_with_jitter, fixed_delay, or none
+#   batch_size_min                         — min rows per INSERT/UPDATE/DELETE statement
+#   batch_size_max                         — max rows per INSERT/UPDATE/DELETE statement (must not exceed §13.3 limit)
+#   access_path                            — internal_api, supavisor, postgrest, or direct_postgres
+#   source_repo                            — GitHub repo containing the workload source code
+#   deployed_from                          — commit SHA or release tag (may be empty if disabled)
+#   kill_switch.method                     — one of: worker_cancel, dashboard_session_terminate, sql_terminate_backend, deploy_rollback
+#   kill_switch.documented_at              — URL or reference where the procedure is documented
+#   kill_switch.identifier                 — config key, cron name, or timer name that disables this workload
+#   request_budget.max_requests_per_invocation  — absolute ceiling per run
+#   request_budget.max_requests_per_1000_input_rows — requests per 1k input (must scale with input; formula must be documented)
+#   request_budget.bulk_fetch_strategy     — IN-clause-batch, bulk-endpoint, pagination-cursor, or none (none requires justification)
+#   change_aware_writes.enabled          — whether change detection is implemented
+#   change_aware_writes.freshness_strategy — run_level or per_row (per_row requires justification)
+#   change_aware_writes.unchanged_write_ratio_target — target max ratio (ratios above this trigger review)
+#   rollout_gates.dry_run_completed      — whether zero-write dry-run passed
+#   rollout_gates.canary_completed       — whether bounded live canary passed
+#   rollout_gates.canary_row_limit       — row limit used for canary
+#   rollout_gates.healthy_cycles_required — minimum healthy cycles before operational
+#   rollout_gates.healthy_cycles_completed — healthy cycles completed so far
+#   rollout_gates.re_enable_approval     — required if workload was disabled by incident
+#   incident_ref                         — GitHub issue URL or #number if previously disabled
+#   monitoring.warning_thresholds        — connections_pct, cpu_pct, timeout_rate_pct, retry_budget_pct
+#   monitoring.critical_thresholds       — connections_pct, cpu_pct, timeout_rate_pct, retry_budget_pct
+#   approved_by                          — who authorized (person, role, or Issue ref; may be explicit if disabled)
+#   approved_at                          — ISO date (may be empty if disabled/pending)
+#   last_reviewed                        — ISO date of last review
+#   notes                                — any additional context, dependencies, known limitations
+#
+# Optional fields:
+#   depends_on          — list of workload_ids this workload depends on
+#   excluded_windows    — cron expressions or time windows when this workload must NOT run
+#   rollback_procedure  — URL or description of how to undo this workload's effects

@@ -2,9 +2,9 @@
 # ============================
 # Canonical machine-readable domain ownership for Retailpulses shared Supabase.
 #
-# Version: 1
-# Last updated: 2026-07-15
-# Governance ref: v1.1.0
+# Version: 3
+# Last updated: 2026-07-16
+# Governance ref: v1.4.0
 #
 # Schema:
 #   database: logical database name (no project ref or URL)
@@ -266,5 +266,12 @@ domains:
       CatalogSync is a database consumer without migration ownership. It reads
       product_catalog domain tables through an internal Worker API (not direct
       Supabase client access). No supabase/ directory. No migration checks needed.
-      Marked as owner for the catalog_sync domain to record responsibility for
-      sync state tables that may be created in the future.
+      INCIDENT #23 CONFIRMED BOUNDARY: No migrations, no RPC functions, no new
+      tables created by CatalogSync. Any future sync-state tables must be owned
+      by the product_catalog domain (retailpulses/RPagentOS) and coordinated
+      with CatalogSync as a declared consumer. CatalogSync's role is a runtime
+      consumer that syncs data through the approved internal_api access path.
+      Re-enable requires explicit approval, internal_api access path,
+      batch size bounded 100-250, request budget tens/low hundreds, change-aware
+      writes with run-level freshness, and rollout gates per
+      DATABASE_GOVERNANCE.md §13.9-13.14.

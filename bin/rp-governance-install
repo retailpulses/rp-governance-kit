@@ -127,6 +127,7 @@ is_up_to_date() {
   local dir="$1"
   local expected_files=(
     ".github/workflows/governance-checks.yml"
+    ".github/workflows/database-governance.yml"
     ".github/pull_request_template.md"
     "bin/rp-issue-create"
     "bin/rp-issue-audit"
@@ -141,6 +142,7 @@ is_up_to_date() {
     [[ -f "$dir/$f" ]] || return 1
   done
   grep -q "retailpulses/rp-governance-kit" "$dir/.github/workflows/governance-checks.yml" 2>/dev/null || return 1
+  [[ "$(tr -d '\\r\\n' < "$dir/.github/governance-ref.txt" 2>/dev/null)" == "$KIT_REF" ]] || return 1
   grep -q "rp-issue-audit" "$dir/bin/rp-issue-work" 2>/dev/null || return 1
   grep -q "16_DATABASE_GOVERNANCE" "$dir/docs/16_DATABASE_GOVERNANCE.md" 2>/dev/null || return 1
   return 0
@@ -162,6 +164,8 @@ copy_files() {
   if [[ -f "$wrapper_src" ]]; then
     sed "s/__REF__/$KIT_REF/g" "$wrapper_src" > ".github/workflows/post-deploy-governance.yml" 2>/dev/null || true
   fi
+
+  sed "s/__REF__/$KIT_REF/g" "$KIT_DIR/templates/github/workflows/database-governance-wrapper.yml" > ".github/workflows/database-governance.yml"
 
   local installed_at
   installed_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")

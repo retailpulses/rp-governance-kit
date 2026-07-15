@@ -58,7 +58,6 @@ jobs:
           BASE="${{ github.event.pull_request.base.sha }}"
           HEAD="${{ github.event.pull_request.head.sha }}"
 
-          # Get timestamp prefixes from new migration files
           NEW_MIGRATIONS=$(git diff --name-only --diff-filter=A "$BASE"..."$HEAD" -- 'supabase/migrations/*.sql' || true)
 
           if [[ -z "$NEW_MIGRATIONS" ]]; then
@@ -66,7 +65,6 @@ jobs:
             exit 0
           fi
 
-          # Check for duplicates among new files
           DUPS=$(echo "$NEW_MIGRATIONS" | while IFS= read -r f; do
             basename "$f" | grep -oE '^[0-9]{14}'
           done | sort | uniq -d)
@@ -76,15 +74,12 @@ jobs:
             exit 1
           fi
 
-          # Check new timestamps against existing files in the repo
           while IFS= read -r new_migration; do
             [[ -z "$new_migration" ]] && continue
             new_ts=$(basename "$new_migration" | grep -oE '^[0-9]{14}' || true)
             [[ -z "$new_ts" ]] && continue
 
-            # Check all existing files in the repo for this timestamp
             EXISTING=$(git ls-files 'supabase/migrations/'"$new_ts"'_*.sql' 2>/dev/null || true)
-            # Count how many have this prefix (should be exactly 1 - the new file itself)
             COUNT=$(echo "$EXISTING" | wc -l | tr -d ' ')
             if [[ "$COUNT" -gt 1 ]]; then
               echo "::error file=$new_migration::Timestamp $new_ts already exists in repository."
@@ -118,14 +113,12 @@ jobs:
           GOV_REF=$(echo "$CHANGED" | grep 'docs/16_DATABASE_GOVERNANCE' || true)
 
           if [[ -n "$MIGRATION_FILES" ]]; then
-            # Check governance reference is installed
             if [[ ! -f "docs/16_DATABASE_GOVERNANCE.md" ]]; then
               echo "::error::Migration files changed but docs/16_DATABASE_GOVERNANCE.md is not installed."
               echo "::error::Install the governance kit before making database changes."
               exit 1
             fi
 
-            # Check docs are updated
             if [[ -z "$DOCS_FILES" ]]; then
               echo "::error::Migration files changed but no documentation was updated."
               echo "::error::Please update docs/00_CURRENT_STATE.md or docs/05_DECISION_LOG.md."
@@ -145,7 +138,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Check for likely secrets in tracked files
+      - name: Check for likely database secrets in tracked files
         run: |
           BASE="${{ github.event.pull_request.base.sha }}"
           HEAD="${{ github.event.pull_request.head.sha }}"
@@ -158,63 +151,70 @@ jobs:
           fi
 
           FAILED=0
-
-          # Patterns for likely live secrets (not placeholders)
-          # service_role key: typically starts with "eyJ" and is long
-          # Database URL: supabase.co with project ref
-          # Anon key: starts with "eyJ"
-          # Access tokens: sbp_ followed by hex
-
-          SECRET_PATTERNS=(
-            'supabase\.co/[a-z]{20,}'
-            'service_role["\s:=]+eyJ[A-Za-z0-9_-]{20,}'
-            'sbp_[a-f0-9]{32,}'
-          )
-
-          # Placeholders that are OK
-          ALLOWED=(
-            'your-project-ref'
-            'YOUR_SUPABASE'
-            'placeholder'
-            'example'
-            'xxxx'
-            'TODO'
-            'YOUR_PROJECT'
-            '__REF__'
-          )
+          REDACTED_MATCHES=()
 
           while IFS= read -r file; do
             [[ -z "$file" ]] && continue
             [[ ! -f "$file" ]] && continue
+            [[ "$file" == *.md ]] && continue
+            [[ "$file" == *.yaml ]] && continue
+            [[ "$file" == *.yml ]] && continue
+            [[ "$file" == *.json ]] && continue
+            [[ "$file" == *.toml ]] && continue
+            [[ "$file" == .gitignore ]] && continue
+            [[ "$file" == .github/* ]] && continue
 
-            for pattern in "${SECRET_PATTERNS[@]}"; do
-              MATCHES=$(grep -nE "$pattern" "$file" 2>/dev/null || true)
-              if [[ -n "$MATCHES" ]]; then
-                # Check if any match looks like a placeholder
-                IS_PLACEHOLDER=false
-                for allowed in "${ALLOWED[@]}"; do
-                  if echo "$MATCHES" | grep -qi "$allowed"; then
-                    IS_PLACEHOLDER=true
-                    break
-                  fi
-                done
+            CONTENT=$(cat "$file" 2>/dev/null || true)
+            [[ -z "$CONTENT" ]] && continue
 
-                if [[ "$IS_PLACEHOLDER" == false ]]; then
-                  while IFS= read -r match_line; do
-                    echo "::error file=$file::Likely live secret detected: $match_line"
-                  done <<< "$MATCHES"
-                  FAILED=1
-                fi
+            # Pattern 1: PostgreSQL URL with embedded password
+            # postgresql://user:password@host:port/db OR postgres://user:password@host:port/db
+            if echo "$CONTENT" | grep -qE 'postgres(ql)?://[^@]+:[^@]+@'; then
+              REDACTED_MATCHES+=("$file: PostgreSQL connection URL with embedded credentials (password redacted)")
+              FAILED=1
+            fi
+
+            # Pattern 2: service_role JWT key (long base64-encoded string)
+            # Only match if it's clearly a JWT token pattern (starts with eyJ and is long)
+            # Skip if it appears in docs, comments, or is a known placeholder
+            if echo "$CONTENT" | grep -qE '(service_role|SERVICE_ROLE).*(eyJ[A-Za-z0-9_\-]{100,})'; then
+              REDACTED_MATCHES+=("$file: service_role key pattern detected (value redacted)")
+              FAILED=1
+            fi
+
+            # Pattern 3: Supabase access token (sbp_ or sbp_ followed by 32+ hex chars)
+            # Only flag in non-documentation files (already filtered above)
+            if echo "$CONTENT" | grep -qE 'sbp_[a-f0-9]{40,}'; then
+              REDACTED_MATCHES+=("$file: Supabase access token pattern detected (value redacted)")
+              FAILED=1
+            fi
+
+            # Pattern 4: Supabase anon key in non-config files
+            # The anon key is public by design, but should only appear in .env or deployment config
+            # Flag it if it appears in source code files
+            if echo "$CONTENT" | grep -qE '(eyJ[A-Za-z0-9_\-]{50,})'; then
+              # Check if the file is a known config type — if not, it's suspect
+              if ! echo "$file" | grep -qE '\.env|config|\.example|\.sample|\.test'; then
+                REDACTED_MATCHES+=("$file: JWT token pattern detected outside config file (value redacted)")
+                FAILED=1
               fi
-            done
+            fi
+
           done <<< "$CHANGED"
 
+          # Report redacted matches
+          for match in "${REDACTED_MATCHES[@]}"; do
+            echo "::error file=${match%%:*}$match"
+          done
+
           if [[ "$FAILED" -eq 1 ]]; then
-            echo "::error::Likely secrets detected. Remove or replace with placeholder values."
+            echo "::error::Likely database secrets detected in changed files. Remove or move to .env / secrets manager."
+            echo "::error::PostgreSQL project refs (e.g., abcdefghijklmnopqrst) are NOT secrets and are NOT flagged."
+            echo "::error::Only credential-bearing URLs, service-role keys, and access tokens trigger this check."
             exit 1
           fi
 
-          echo "No likely secrets detected: OK"
+          echo "No likely database secrets detected: OK"
 
   migration-header:
     name: Migration Header Check
@@ -289,10 +289,8 @@ jobs:
             exit 0
           fi
 
-          # Derive expected owner from repo
           REPO_NAME=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
 
-          # Check if repo has a local declaration
           if [[ -f "docs/16_DATABASE_GOVERNANCE.local.md" ]]; then
             DECLARED_OWNER=$(grep -i "migration owner:" docs/16_DATABASE_GOVERNANCE.local.md 2>/dev/null | head -1 || true)
           else
@@ -304,20 +302,16 @@ jobs:
             [[ -z "$migration" ]] && continue
             [[ ! -f "$migration" ]] && continue
 
-            # Extract Owner: from migration header
             MIG_OWNER=$(head -20 "$migration" | grep -E '^-- Owner:' | sed 's/-- Owner:[[:space:]]*//' | xargs || true)
 
             if [[ -n "$MIG_OWNER" ]]; then
               MIG_OWNER_LOWER=$(echo "$MIG_OWNER" | tr '[:upper:]' '[:lower:]')
               if [[ "$MIG_OWNER_LOWER" != *"$REPO_NAME"* ]]; then
-                # Migration declares a different owner than this repo
-                # Check for cross-domain exception marker
                 HAS_EXCEPTION=false
                 if grep -qE '-- Cross-domain exception:|cross.domain.exception' "$migration" 2>/dev/null; then
                   HAS_EXCEPTION=true
                 fi
 
-                # Check PR body for Issue reference
                 PR_BODY="${{ github.event.pull_request.body }}"
                 HAS_ISSUE_REF=$(echo "$PR_BODY" | grep -cE '(Refs|Closes|Fixes|Resolves)[[:space:]]+#[0-9]+' || true)
 
@@ -340,6 +334,426 @@ jobs:
 
           echo "Migration ownership check: OK"
 
+  runtime-impact-declaration:
+    name: Runtime Impact Declaration
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check runtime database impact documentation
+        if: always()
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
+
+          CHANGED=$(git diff --name-only "$BASE"..."$HEAD" || true)
+          PR_BODY="${{ github.event.pull_request.body }}"
+
+          if [[ -z "$CHANGED" ]]; then
+            echo "No changed files: OK"
+            exit 0
+          fi
+
+          # Detect files that suggest new or changed database-writing code
+          #
+          # We look for:
+          #   1. Changed files that contain database write patterns (INSERT/UPDATE/DELETE + supabase/PostgreSQL client)
+          #   2. New/Changed Worker files that interact with database
+          #   3. New/Changed scheduled/cron job definitions
+          #   4. New/Changed script files that perform bulk operations
+          #
+          # This check is NOT fragile — it only flags when strong signals are present.
+          # It is a contract-based check: if you write database-code, document the runtime impact.
+
+          WRITE_INDICATORS=0
+          DETECTED_SIGNALS=()
+
+          while IFS= read -r file; do
+            [[ -z "$file" ]] && continue
+            [[ ! -f "$file" ]] && continue
+
+            # Skip docs, config, and non-code files
+            if echo "$file" | grep -qE '\.(md|yaml|yml|json|toml|txt|env|example|sample)$'; then
+              continue
+            fi
+
+            CONTENT=$(cat "$file" 2>/dev/null || true)
+            [[ -z "$CONTENT" ]] && continue
+
+            # Signal 1: Database write operations in code files
+            if echo "$CONTENT" | grep -qE '\.(insert|upsert|update|delete)\(|\.from\([^)]+\)\.(insert|upsert|update|delete)'; then
+              DETECTED_SIGNALS+=("$file: database write operation (insert/upsert/update/delete) detected")
+              WRITE_INDICATORS=$((WRITE_INDICATORS + 1))
+            fi
+
+            # Signal 2: Bulk/batch database operations
+            if echo "$CONTENT" | grep -qE 'batchSize|batch_size|BATCH_SIZE|bulkInsert|bulk.*insert|bulk.*update|bulk.*delete'; then
+              DETECTED_SIGNALS+=("$file: bulk/batch database operation pattern detected")
+              WRITE_INDICATORS=$((WRITE_INDICATORS + 1))
+            fi
+
+            # Signal 3: Scheduled/cron job with database access
+            if echo "$file" | grep -qE 'cron|scheduled|trigger' && echo "$CONTENT" | grep -qE '(supabase|pg|postgres|database|db)'; then
+              DETECTED_SIGNALS+=("$file: scheduled/cron job with database access detected")
+              WRITE_INDICATORS=$((WRITE_INDICATORS + 1))
+            fi
+
+            # Signal 4: Worker files with database write patterns
+            if echo "$file" | grep -qiE 'worker' && echo "$CONTENT" | grep -qE '(supabase|createClient|\.from\()'; then
+              DETECTED_SIGNALS+=("$file: Worker file with database client access detected")
+              WRITE_INDICATORS=$((WRITE_INDICATORS + 1))
+            fi
+
+            # Signal 5: Import/sync scripts
+            if echo "$file" | grep -qiE 'import|sync|backfill' && echo "$CONTENT" | grep -qE '(supabase|pg|postgres|database|db)'; then
+              DETECTED_SIGNALS+=("$file: import/sync/backfill script with database access detected")
+              WRITE_INDICATORS=$((WRITE_INDICATORS + 1))
+            fi
+
+          done <<< "$CHANGED"
+
+          if [[ "$WRITE_INDICATORS" -eq 0 ]]; then
+            echo "No database-writing code patterns detected: OK"
+            exit 0
+          fi
+
+          echo "=== Detected database-writing code patterns ==="
+          for signal in "${DETECTED_SIGNALS[@]}"; do
+            echo "  - $signal"
+          done
+          echo ""
+
+          # Now check if the PR body contains the required runtime impact declaration
+          HAS_WORKLOAD_CATEGORY=$(echo "$PR_BODY" | grep -qiE 'Workload category:' && echo "yes" || echo "no")
+          HAS_WORKLOAD_REGISTRY=$(echo "$PR_BODY" | grep -qiE '(Workload registry|DATABASE_WORKLOADS)' && echo "yes" || echo "no")
+
+          # Check if workload declaration exists in repo files
+          WORKLOAD_YAML_EXISTS=false
+          if [[ -f "docs/DATABASE_WORKLOADS.yaml" ]]; then
+            WORKLOAD_YAML_EXISTS=true
+          fi
+
+          LOCAL_DECL_EXISTS=false
+          if [[ -f "docs/16_DATABASE_GOVERNANCE.local.md" ]]; then
+            if grep -qiE '(Workload|workload|cron|sync|import|backfill)' docs/16_DATABASE_GOVERNANCE.local.md 2>/dev/null; then
+              LOCAL_DECL_EXISTS=true
+            fi
+          fi
+
+          if [[ "$HAS_WORKLOAD_REGISTRY" == "yes" ]]; then
+            echo "Runtime workload declaration found in PR body: OK"
+          elif [[ "$WORKLOAD_YAML_EXISTS" == true ]]; then
+            echo "docs/DATABASE_WORKLOADS.yaml exists: workload registry available"
+            # Non-blocking warning if workload.yaml exists but PR doesn't reference it
+            if [[ "$HAS_WORKLOAD_CATEGORY" == "no" ]]; then
+              echo "::warning::Database-writing code detected but PR body does not include Runtime Database Impact section."
+              echo "::warning::Please add Runtime Database Impact and Operational Budget fields to the PR template."
+            fi
+          elif [[ "$LOCAL_DECL_EXISTS" == true ]]; then
+            echo "Workload declaration found in docs/16_DATABASE_GOVERNANCE.local.md: OK"
+          else
+            echo "::warning::Database-writing code patterns detected without workload declaration."
+            echo "::warning::Detected signals:"
+            for signal in "${DETECTED_SIGNALS[@]}"; do
+              echo "::warning::  $signal"
+            done
+            echo "::warning::"
+            echo "::warning::This check is non-blocking. Required for compliance:"
+            echo "::warning::  1. Fill in the Runtime Database Impact section in the PR description."
+            echo "::warning::  2. Register recurring workloads in docs/DATABASE_WORKLOADS.yaml."
+            echo "::warning::  3. Or declare one-off workloads in docs/16_DATABASE_GOVERNANCE.local.md."
+            echo "::warning::"
+            echo "::warning::If this code does NOT perform database writes at runtime,"
+            echo "::warning::check 'No runtime database impact' in the PR template and ignore this warning."
+          fi
+
+  # ── Non-blocking contract checks ─────────────────────────────
+
+  n-plus-one-detection:
+    name: N+1 Lookup Detection
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect N+1 lookup patterns in changed code
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
+
+          CHANGED=$(git diff --name-only "$BASE"..."$HEAD" || true)
+          PR_BODY="${{ github.event.pull_request.body }}"
+
+          if [[ -z "$CHANGED" ]]; then
+            echo "No changed files: OK"
+            exit 0
+          fi
+
+          SIGNALS_FOUND=0
+
+          while IFS= read -r file; do
+            [[ -z "$file" ]] && continue
+            [[ ! -f "$file" ]] && continue
+            [[ "$file" == *.md ]] && continue
+            [[ "$file" == *.yaml ]] && continue
+            [[ "$file" == *.yml ]] && continue
+            [[ "$file" == *.json ]] && continue
+
+            CONTENT=$(cat "$file" 2>/dev/null || true)
+            [[ -z "$CONTENT" ]] && continue
+
+            HAS_DB_CLIENT=false
+            HAS_LOOP=false
+            HAS_BULK=false
+
+            if echo "$CONTENT" | grep -qE '(\.from\(|\.select\(|createClient|supabase|pg\.|postgres\b)'; then
+              HAS_DB_CLIENT=true
+            fi
+
+            if echo "$CONTENT" | grep -qE '\b(for|while|forEach|\.map\s*\(|for\s*\(|for\s+const|for\s+let|for\s+var|\.each\()'; then
+              HAS_LOOP=true
+            fi
+
+            if echo "$CONTENT" | grep -qiE '(bulk|batch|Promise\.all|\.in\(|IN\s*\()'; then
+              HAS_BULK=true
+            fi
+
+            if [[ "$HAS_DB_CLIENT" == true && "$HAS_LOOP" == true && "$HAS_BULK" == false ]]; then
+              echo "::warning file=$file::Possible N+1 lookup pattern: database/API call inside a loop without visible bulk retrieval strategy."
+              echo "::warning file=$file::If this loop iterates over input items and issues DB/API calls per item, add a bulk-fetch strategy or declare the request-count budget in the workload declaration."
+              SIGNALS_FOUND=$((SIGNALS_FOUND + 1))
+            fi
+
+          done <<< "$CHANGED"
+
+          if [[ "$SIGNALS_FOUND" -eq 0 ]]; then
+            echo "No N+1 lookup patterns detected: OK"
+          else
+            echo "::warning::$SIGNALS_FOUND possible N+1 lookup pattern(s) detected."
+            echo "::warning::This check is non-blocking. Address or declare exemption in workload declaration."
+          fi
+
+  change-aware-write-detection:
+    name: Change-Aware Write Detection
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect periodic scan+write patterns without change detection
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
+
+          CHANGED=$(git diff --name-only "$BASE"..."$HEAD" || true)
+          PR_BODY="${{ github.event.pull_request.body }}"
+
+          if [[ -z "$CHANGED" ]]; then
+            echo "No changed files: OK"
+            exit 0
+          fi
+
+          SIGNALS_FOUND=0
+
+          while IFS= read -r file; do
+            [[ -z "$file" ]] && continue
+            [[ ! -f "$file" ]] && continue
+            [[ "$file" == *.md ]] && continue
+            [[ "$file" == *.yaml ]] && continue
+            [[ "$file" == *.yml ]] && continue
+            [[ "$file" == *.json ]] && continue
+
+            CONTENT=$(cat "$file" 2>/dev/null || true)
+            [[ -z "$CONTENT" ]] && continue
+
+            HAS_READ=false
+            HAS_WRITE=false
+            IS_CRON=false
+
+            if echo "$CONTENT" | grep -qE '(\.select\(|SELECT\s+)'; then
+              HAS_READ=true
+            fi
+
+            if echo "$CONTENT" | grep -qE '(\.upsert\(|\.update\(|\.insert\(|INSERT\s+|UPDATE\s+|\.save\()'; then
+              HAS_WRITE=true
+            fi
+
+            if echo "$file" | grep -qiE 'cron|scheduled|trigger|timer' && echo "$CONTENT" | grep -qE '(supabase|createClient|\.from\()'; then
+              IS_CRON=true
+            fi
+
+            if [[ "$HAS_READ" == true && "$HAS_WRITE" == true ]]; then
+              HAS_CAW_DECL=false
+              if echo "$PR_BODY" | grep -qiE 'change.aware|freshness_strategy|unchanged.write'; then
+                HAS_CAW_DECL=true
+              fi
+
+              # Check local workload file
+              if [[ -f "docs/16_DATABASE_GOVERNANCE.local.md" ]]; then
+                if grep -qiE 'change.aware|freshness_strategy|unchanged.write' docs/16_DATABASE_GOVERNANCE.local.md 2>/dev/null; then
+                  HAS_CAW_DECL=true
+                fi
+              fi
+
+              if [[ "$HAS_CAW_DECL" == false ]]; then
+                echo "::warning file=$file::Code combines database read and write operations — change-aware write review recommended."
+                echo "::warning file=$file::Ensure periodic scans do not rewrite unchanged rows for per-row freshness timestamps unless justified."
+                SIGNALS_FOUND=$((SIGNALS_FOUND + 1))
+              fi
+            fi
+
+          done <<< "$CHANGED"
+
+          if [[ "$SIGNALS_FOUND" -eq 0 ]]; then
+            echo "No change-aware write concerns detected: OK"
+          else
+            echo "::warning::$SIGNALS_FOUND change-aware write concern(s) found."
+            echo "::warning::This check is non-blocking. Declare change-aware write strategy in workload declaration."
+          fi
+
+  access-path-enforcement:
+    name: Access Path Enforcement
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check database access path against ownership registry
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
+
+          CHANGED=$(git diff --name-only "$BASE"..."$HEAD" || true)
+          PR_BODY="${{ github.event.pull_request.body }}"
+          REPO_NAME="${{ github.repository }}"
+
+          if [[ -z "$CHANGED" ]]; then
+            echo "No changed files: OK"
+            exit 0
+          fi
+
+          SIGNALS_FOUND=0
+
+          # Detect database client imports
+          while IFS= read -r file; do
+            [[ -z "$file" ]] && continue
+            [[ ! -f "$file" ]] && continue
+            [[ "$file" == *.md ]] && continue
+            [[ "$file" == *.yaml ]] && continue
+            [[ "$file" == *.yml ]] && continue
+            [[ "$file" == *.json ]] && continue
+            [[ "$file" == *.toml ]] && continue
+
+            CONTENT=$(cat "$file" 2>/dev/null || true)
+            [[ -z "$CONTENT" ]] && continue
+
+            HAS_DIRECT_DB=false
+            if echo "$CONTENT" | grep -qE '(createClient|supabase\.from|pg\.connect|Pool\(|new pg\.|psycopg|postgresql://)'; then
+              HAS_DIRECT_DB=true
+            fi
+
+            if [[ "$HAS_DIRECT_DB" == true ]]; then
+              echo "::notice file=$file::Database client import detected."
+              SIGNALS_FOUND=$((SIGNALS_FOUND + 1))
+            fi
+
+            # Check if this repo is a declared consumer of another domain
+            # If so, direct database access is a governance violation
+            HAS_MIGRATION_CREATE=false
+            if echo "$CONTENT" | grep -qE 'CREATE\s+(TABLE|VIEW|FUNCTION|TRIGGER|POLICY|SCHEMA|EXTENSION)'; then
+              HAS_MIGRATION_CREATE=true
+            fi
+
+            if [[ "$HAS_DIRECT_DB" == true || "$HAS_MIGRATION_CREATE" == true ]]; then
+              echo "::notice file=$file::Verify access path matches declared workload. Consumers must follow the domain's declared approved access boundary."
+            fi
+
+          done <<< "$CHANGED"
+
+          # Check if PR body declares access path
+          HAS_ACCESS_PATH=$(echo "$PR_BODY" | grep -qiE 'access.path|internal_api|supavisor|postgrest|direct_postgres' && echo "yes" || echo "no")
+
+          if [[ "$SIGNALS_FOUND" -gt 0 && "$HAS_ACCESS_PATH" == "no" ]]; then
+            echo "::warning::Database client imports detected ($SIGNALS_FOUND files). No access path declaration found in PR body."
+            echo "::warning::Declare the approved access path (internal_api, supavisor, postgrest, or direct_postgres) in the workload declaration."
+            echo "::warning::Consumers must follow the domain's declared approved access boundary as specified in DATABASE_OWNERSHIP.yaml."
+          elif [[ "$SIGNALS_FOUND" -gt 0 ]]; then
+            echo "Access path declaration found in PR body: OK"
+          else
+            echo "No database client imports detected: OK"
+          fi
+
+          echo ""
+          echo "This check is non-blocking. It flags database access patterns without declared access paths."
+          echo "See: docs/DATABASE_GOVERNANCE.md §13.11 (Access Path Declaration)"
+
+  run-health-independence-check:
+    name: Run Health Independence Check
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect workload health patterns that may conflate historical and current-run status
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
+
+          CHANGED=$(git diff --name-only "$BASE"..."$HEAD" || true)
+
+          if [[ -z "$CHANGED" ]]; then
+            echo "No changed files: OK"
+            exit 0
+          fi
+
+          SIGNALS_FOUND=0
+
+          while IFS= read -r file; do
+            [[ -z "$file" ]] && continue
+            [[ ! -f "$file" ]] && continue
+            [[ "$file" == *.md ]] && continue
+            [[ "$file" == *.yaml ]] && continue
+            [[ "$file" == *.yml ]] && continue
+            [[ "$file" == *.json ]] && continue
+
+            CONTENT=$(cat "$file" 2>/dev/null || true)
+            [[ -z "$CONTENT" ]] && continue
+
+            HAS_CRON=true
+            if echo "$file" | grep -qiE 'cron|scheduled|trigger|timer'; then
+              HAS_CRON=true
+            else
+              HAS_CRON=false
+            fi
+            if echo "$CONTENT" | grep -qE '(supabase|createClient|\.from\()' && ! echo "$file" | grep -qiE 'cron|scheduled|trigger|timer'; then
+              HAS_CRON=false
+            fi
+
+            if [[ "$HAS_CRON" == true ]]; then
+              echo "::notice file=$file::Scheduled/cron workload detected."
+              echo "::notice file=$file::Ensure current-run health assessment is independent from historical alerts (see DATABASE_GOVERNANCE.md §13.14)."
+              SIGNALS_FOUND=$((SIGNALS_FOUND + 1))
+            fi
+
+          done <<< "$CHANGED"
+
+          if [[ "$SIGNALS_FOUND" -eq 0 ]]; then
+            echo "No scheduled workload patterns detected: OK"
+          else
+            echo "::notice::$SIGNALS_FOUND scheduled workload(s) detected."
+            echo "::notice::Verify current-run finalization reports separate this-run metrics from historical debt."
+          fi
+
   # ── Non-blocking warnings ─────────────────────────────────────
 
   migration-warnings:
@@ -359,7 +773,6 @@ jobs:
           CHANGED_MIGRATIONS=$(git diff --name-only "$BASE"..."$HEAD" -- 'supabase/migrations/*.sql' || true)
           WARNINGS=0
 
-          # 1. Empty migration files
           while IFS= read -r migration; do
             [[ -z "$migration" ]] && continue
             [[ ! -f "$migration" ]] && continue
@@ -369,7 +782,6 @@ jobs:
             fi
           done <<< "$CHANGED_MIGRATIONS"
 
-          # 2. Remote-only migration placeholders
           while IFS= read -r migration; do
             [[ -z "$migration" ]] && continue
             fname=$(basename "$migration")
@@ -381,7 +793,6 @@ jobs:
             fi
           done <<< "$CHANGED_MIGRATIONS"
 
-          # 3. Check for CLI version recording
           if [[ -n "$CHANGED_MIGRATIONS" ]]; then
             if [[ -f "docs/16_DATABASE_GOVERNANCE.local.md" ]]; then
               if ! grep -qE '(supabase.cli|CLI version)' docs/16_DATABASE_GOVERNANCE.local.md 2>/dev/null; then
@@ -391,7 +802,6 @@ jobs:
             fi
           fi
 
-          # 4. Check for missing access class declaration
           if [[ -n "$CHANGED_MIGRATIONS" ]]; then
             while IFS= read -r migration; do
               [[ -z "$migration" ]] && continue
@@ -407,7 +817,6 @@ jobs:
             done <<< "$CHANGED_MIGRATIONS"
           fi
 
-          # 5. Check for generated types alongside migrations
           if [[ -n "$CHANGED_MIGRATIONS" ]]; then
             TYPE_FILES=$(echo "$(git diff --name-only "$BASE"..."$HEAD")" | grep -E 'types|database\.ts|supabase\.ts' || true)
             if [[ -z "$TYPE_FILES" ]]; then

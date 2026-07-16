@@ -299,7 +299,101 @@ workloads:
         timeout_rate_pct: 15
         retry_budget_pct: 50
 
-# ── Documentation for New Entries ────────────────────────────────────────
+  # ── CatalogSync Mercari shop4 read projection ─────────────────────────
+  catalogsync_mercari_shop4_read:
+    owner_repo: retailpulses/CatalogSync
+    category: scheduled_jobs
+    risk_level: medium
+    domain: product_catalog
+    status: pending_approval
+    description: >
+      Read-only Supabase projection used by the fixed-IP CatalogSync VPS to
+      reconcile Mercari shop4 inventory, presale title prefix, and shipping
+      lead time. It does not write Supabase and does not cover shops 1-3,
+      Amazon, Rakuten, dashboards, or archival.
+    trigger: "*/10 * * * * full; * * * * * bounded priority"
+    affected_tables:
+      - platform_accounts
+      - platform_listings
+      - platform_listing_skus
+      - product_variants
+      - product_commercials
+    expected_volume_rows_min: 5000
+    expected_volume_rows_target: 22000
+    expected_volume_rows_max: 25000
+    expected_request_count_min: 10
+    expected_request_count_max: 100
+    expected_runtime_seconds_max: 540
+    concurrency_max: 1
+    statement_timeout_ms: 20000
+    max_retries: 3
+    retry_strategy: exponential_backoff_with_jitter
+    batch_size_min: 1
+    batch_size_max: 500
+    access_path: postgrest
+    source_repo: retailpulses/CatalogSync
+    deployed_from: ""
+    runtime_host: "160.251.141.110"
+    credential_owner: "retailpulses/RPagentOS product_catalog domain owner"
+    credential_contract:
+      role: catalogsync_shop4_reader
+      service_role_forbidden: true
+      database_writes_forbidden: true
+      rotation_days_max: 90
+      storage: /root/mercari-sync/.env
+      file_mode: "0600"
+    request_budget:
+      max_requests_per_invocation: 100
+      max_rows_per_invocation: 25000
+      max_requests_per_1000_input_rows: 5
+      bulk_fetch_strategy: pagination-cursor
+    mapping_strategy:
+      order:
+        - explicit_variant_id
+        - canonical_sku_code
+        - canonical_seller_sku
+      missing_or_ambiguous: fail_closed
+      shop_scope: shop4
+    change_aware_writes:
+      enabled: true
+      freshness_strategy: run_level
+      unchanged_write_ratio_target: 0.0
+      database_writes: false
+      marketplace_writes_only_on_diff: true
+    kill_switch:
+      method: deploy_rollback
+      documented_at: "retailpulses/CatalogSync#23"
+      identifier: CATALOGSYNC_SHOP4_ENABLED
+    rollout_gates:
+      dry_run_completed: false
+      canary_completed: false
+      canary_row_limit: 5
+      healthy_cycles_required: 3
+      healthy_cycles_completed: 0
+      mapping_dry_run_completed: false
+      full_apply_completed: false
+    approved_by: ""
+    approved_at:
+    last_reviewed: "2026-07-16"
+    incident_ref: "retailpulses/CatalogSync#23"
+    notes: >
+      Owner approval is represented by the RPagentOS migration that provisions
+      the column-limited read role and shop-isolation policies. The runtime
+      token must never be a Supabase service-role credential. Production
+      Mercari access remains restricted to VPS 160.251.141.110.
+    monitoring:
+      warning_thresholds:
+        connections_pct: 80
+        cpu_pct: 70
+        timeout_rate_pct: 5
+        retry_budget_pct: 30
+      critical_thresholds:
+        connections_pct: 95
+        cpu_pct: 90
+        timeout_rate_pct: 15
+        retry_budget_pct: 50
+
+  # ── Documentation for New Entries ────────────────────────────────────────
 #
 # Required fields for every real workload entry:
 #   workload_id                          — unique identifier (kebab-case, no "example_" prefix for real entries)

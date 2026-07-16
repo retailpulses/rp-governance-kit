@@ -128,10 +128,14 @@ domains:
         - compute_mercari_qty
       storage_buckets: []
     notes: >
-      Core product and platform listing data model. CatalogSync reads from these
-      tables through an internal Worker API, not direct Supabase client access.
-      CatalogSync and marketplace skills must not receive a Supabase service-role
-      credential; reads and writes use RPagentOS-owned internal API contracts.
+      Core product and platform listing data model. CatalogSync's disabled
+      product-mirror workload reads through the internal Worker API. The
+      separately registered catalogsync_mercari_shop4_read workload may use
+      read-only PostgREST from VPS 160.251.141.110 with a dedicated,
+      owner-provisioned least-privilege role. It may not use service_role,
+      write database rows, access another shop, or create schema objects.
+      All other CatalogSync reads and writes continue to use RPagentOS-owned
+      internal API contracts.
 
   # ── Agent OS ──────────────────────────────────────────────
   agent_os:

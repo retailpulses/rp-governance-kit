@@ -216,6 +216,8 @@ if [[ "$IS_DB_WORK" == true ]]; then
   echo "## Database Governance" >> "$BRIEF"
   echo "" >> "$BRIEF"
   echo "- Check \`docs/DATABASE_OWNERSHIP.yaml\` in rp-governance-kit for domain ownership." >> "$BRIEF"
+  echo "- Check \`docs/DATABASE_WORKLOADS.yaml\` for registered workloads and their declared access paths." >> "$BRIEF"
+  echo "- Schema ownership controls schema change authority. It does NOT automatically determine runtime access path (see DATABASE_GOVERNANCE.md §2b)." >> "$BRIEF"
   echo "- If modifying objects owned by another repository, an explicit cross-domain exception is required." >> "$BRIEF"
   echo "- Migration naming: \`YYYYMMDDHHMMSS_description.sql\` — unique across all Retailpulses repos." >> "$BRIEF"
   echo "- Every migration must include the required header comment." >> "$BRIEF"

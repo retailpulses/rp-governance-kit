@@ -194,61 +194,91 @@ main() {
   done
 
   local warnings=()
+  # All keyword-based findings below are HEURISTIC — they flag possible
+  # mismatches but are NOT factual architecture conclusions. Agents must
+  # not convert these warnings into unsupported blocking rules
+  # (e.g., "API-only required because schema ownership is absent").
+  # Source: templates/bin/rp-issue-audit (central governance-kit)
+
   if body_mentions "$body_file" 'cloudflare|worker|wrangler|pages|r2|kv|d1'; then
     if section_exists_in_file "$body_file" "Cloudflare Dependency" && section_denies_impact "$body_file" "Cloudflare Dependency"; then
-      warnings+=("Cloudflare-related keywords found, but Cloudflare Dependency appears to say no impact.")
+      warnings+=("[heuristic] Cloudflare-related keywords found, but Cloudflare Dependency appears to say no impact. Verify and update if material.")
     fi
   fi
 
   if body_mentions "$body_file" 'supabase|migration|rls|postgres|edge function'; then
     if section_exists_in_file "$body_file" "Supabase Impact" && section_denies_impact "$body_file" "Supabase Impact"; then
-      warnings+=("Supabase/data keywords found, but Supabase Impact appears to say no impact.")
+      warnings+=("[heuristic] Supabase/data keywords found, but Supabase Impact appears to say no impact. Verify and update if material.")
     fi
   fi
 
   if body_mentions "$body_file" 'baserow|legacy|csv import|old flow|backfill'; then
     if section_exists_in_file "$body_file" "Baserow Dependency / Legacy Impact" && section_denies_impact "$body_file" "Baserow Dependency / Legacy Impact"; then
-      warnings+=("Baserow/legacy keywords found, but Baserow Dependency / Legacy Impact appears to say no impact.")
+      warnings+=("[heuristic] Baserow/legacy keywords found, but Baserow Dependency / Legacy Impact appears to say no impact. Verify and update if material.")
     fi
   fi
 
   if body_mentions "$body_file" 'frontend|ui|page|route|component|screen|form'; then
     if section_exists_in_file "$body_file" "User Workflow Impact" && section_denies_impact "$body_file" "User Workflow Impact"; then
-      warnings+=("Frontend/UI keywords found, but User Workflow Impact appears to say no impact.")
+      warnings+=("[heuristic] Frontend/UI keywords found, but User Workflow Impact appears to say no impact. Verify and update if material.")
     fi
     if section_exists_in_file "$body_file" "Frontend Stack Impact"; then
       local frontend_text
       frontend_text=$(section_text "$body_file" "Frontend Stack Impact" | tr '[:upper:]' '[:lower:]')
       if ! echo "$frontend_text" | grep -qE 'react.*vite.*typescript|follows.*standard|exception'; then
-        warnings+=("Frontend keywords found - Frontend Stack Impact should mention React + Vite + TypeScript compliance or document an exception.")
+        warnings+=("[heuristic] Frontend keywords found - Frontend Stack Impact should mention React + Vite + TypeScript compliance or document an exception.")
       fi
     fi
   fi
 
   if body_mentions "$body_file" 'table|column|schema|model|migration|field'; then
     if section_exists_in_file "$body_file" "Data Model Impact" && section_denies_impact "$body_file" "Data Model Impact"; then
-      warnings+=("Data-model keywords found, but Data Model Impact appears to say no impact.")
+      warnings+=("[heuristic] Data-model keywords found, but Data Model Impact appears to say no impact. Verify and update if material.")
     fi
   fi
 
   if body_mentions "$body_file" 'migration|schema|table|view|function|rpc|rls|storage|generated.type|access.class|hosted.write|service.role'; then
     if section_exists_in_file "$body_file" "Database Governance"; then
       if section_denies_impact "$body_file" "Database Governance"; then
-        warnings+=("Database governance keywords found, but Database Governance appears to say no impact.")
+        warnings+=("[heuristic] Database governance keywords found, but Database Governance appears to say no impact. Verify and update if material.")
       fi
     else
-      warnings+=("Database governance keywords found, but Database Governance section is missing.")
+      warnings+=("[heuristic] Database governance keywords found, but Database Governance section is missing.")
     fi
   fi
 
-  # Check ownership: if a non-owner repo proposes schema changes, warn
+  # Schema ownership check: warn about schema changes, but do NOT infer
+  # runtime access restrictions from schema ownership.
+  # Schema ownership and runtime access are separate governance dimensions
+  # per DATABASE_GOVERNANCE.md §2b.
+  # Source: docs/DATABASE_GOVERNANCE.md §2b
   if body_mentions "$body_file" 'schema|migration|table|view|function|alter table|create table'; then
     if [[ -f "docs/DATABASE_OWNERSHIP.yaml" ]]; then
-      warnings+=("Database schema changes proposed. Verify domain ownership against docs/DATABASE_OWNERSHIP.yaml.")
+      warnings+=("[advisory] Database schema changes proposed. Verify domain ownership against docs/DATABASE_OWNERSHIP.yaml. NOTE: Schema ownership does not determine runtime access path (see DATABASE_GOVERNANCE.md §2b).")
     elif [[ -f "docs/16_DATABASE_GOVERNANCE.md" ]]; then
-      warnings+=("Database schema changes proposed. Check central DATABASE_OWNERSHIP.yaml in rp-governance-kit for domain ownership.")
+      warnings+=("[advisory] Database schema changes proposed. Check central DATABASE_OWNERSHIP.yaml in rp-governance-kit for domain ownership. NOTE: Schema ownership does not determine runtime access path.")
     fi
   fi
+
+  # Local-vs-central conflict detection: check if installed local rules
+  # claim "stricter" or "API-only" without central-policy support
+  # Source: templates/bin/rp-issue-audit (central governance-kit)
+  if [[ -f "docs/16_DATABASE_GOVERNANCE.local.md" ]]; then
+    if grep -qiE 'API.only.*consumer|database.consumer.only|not.direct' "docs/16_DATABASE_GOVERNANCE.local.md" 2>/dev/null; then
+      if ! grep -qiE 'workload.*declaration|access.path.*postgrest|access.path.*supavisor|access.path.*direct' "docs/16_DATABASE_GOVERNANCE.local.md" 2>/dev/null; then
+        warnings+=("[conflict] docs/16_DATABASE_GOVERNANCE.local.md may imply API-only access based on schema ownership alone. Central policy (DATABASE_GOVERNANCE.md §2b) explicitly separates schema ownership from runtime access path. A local rule that claims API-only solely because the repo lacks schema ownership conflicts with central policy.")
+      fi
+    fi
+  fi
+
+  # Check for the "stricter" ambiguity pattern in AGENTS.md or CLAUDE.md
+  for cfg_file in AGENTS.md CLAUDE.md; do
+    if [[ -f "$cfg_file" ]]; then
+      if grep -qiE 'central.governance.wins.*unless.*stricter|repo.rules.are.stricter' "$cfg_file" 2>/dev/null; then
+        warnings+=("[conflict] $cfg_file contains 'central governance wins unless repo rules are stricter' language. This phrasing is ambiguous and may cause agents to incorrectly accept API-only rules that conflict with central policy (DATABASE_GOVERNANCE.md §2b). Update to: 'Central governance wins. A repository-local rule that conflicts with central policy is reported as a conflict, even if the local rule is more restrictive.'")
+      fi
+    fi
+  done
 
   if [[ ${#missing[@]} -gt 0 ]]; then
     echo "FAIL"
@@ -278,11 +308,13 @@ main() {
   if [[ ${#warnings[@]} -gt 0 ]]; then
     echo "WARN"
     echo ""
-    echo "Potential impact mismatches:"
+    echo "Governance findings:"
     printf '  - %s\n' "${warnings[@]}"
     echo ""
     echo "Suggested correction:"
-    echo "  Update the relevant impact section if the keyword is material, or explain why there is no impact."
+    echo "  Update the relevant impact section if the finding is material."
+    echo "  Heuristic findings may be dismissed if keywords are incidental."
+    echo "  Conflict findings require resolution before coding."
     echo "WARN" > "$status_file"
     exit 0
   fi

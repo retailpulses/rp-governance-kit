@@ -132,6 +132,22 @@ if [[ -f "$WORKLOADS" ]]; then
     warn "CatalogSync workload entry not found (optional: may be added in future)"
   fi
 
+  if grep -q 'catalogsync_mercari_shop4_read' "$WORKLOADS"; then
+    pass "CatalogSync shop4 read workload entry exists"
+    if grep -A90 'catalogsync_mercari_shop4_read:' "$WORKLOADS" | grep -q 'access_path: postgrest'; then
+      pass "CatalogSync shop4 entry declares postgrest access"
+    else
+      fail "CatalogSync shop4 entry must declare postgrest access"
+    fi
+    if grep -A90 'catalogsync_mercari_shop4_read:' "$WORKLOADS" | grep -q 'service_role_forbidden: true'; then
+      pass "CatalogSync shop4 entry forbids service_role"
+    else
+      fail "CatalogSync shop4 entry must forbid service_role"
+    fi
+  else
+    fail "CatalogSync shop4 read workload entry missing"
+  fi
+
   # Schema extensions for incident #23
   if grep -q 'access_path:' "$WORKLOADS"; then
     pass "Schema includes access_path field"

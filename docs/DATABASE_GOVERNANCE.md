@@ -387,12 +387,21 @@ Every workload must declare and follow its approved database access path. Consum
 **Rules:**
 
 - Consumer repositories of a domain (listed in `DATABASE_OWNERSHIP.yaml` as `consumers`) must follow the domain's declared approved access boundary. The binding rule is the repository/domain's approved access boundary as declared in `DATABASE_OWNERSHIP.yaml` and its workload entries in `DATABASE_WORKLOADS.yaml`. Consumers may use an access path other than `internal_api` only when that alternative path is explicitly declared and approved by the owning domain in the ownership registry or workload entry.
-- CatalogSync is a consumer of the `product_catalog` domain and must use `internal_api` as its access path, per its local declaration and incident #23.
+- CatalogSync's disabled product-mirror workload must use `internal_api`, per
+  incident #23. The separately declared, read-only Mercari shop4 projection may
+  use `postgrest` only with the owner-approved dedicated role, column-limited
+  SELECT grants, shop-isolation policies, request limits, and workload entry.
 - Owner repositories may use any path appropriate to their operation type.
 - The declared access path in `DATABASE_WORKLOADS.yaml` is binding. A workload caught using a path other than its declared path is a governance violation.
 - VPS-hosted scripts that connect directly to the database must declare `direct_postgres` and include the VPS hostname in the workload declaration.
 
-**CI contract check:** Changed code that imports a Supabase client (`.createClient()`, `createClient`) or PostgreSQL driver (`pg`, `postgres`, `psycopg2`) will trigger a check that the workload declaration includes an access path. If the importing repository is a declared consumer of another domain in `DATABASE_OWNERSHIP.yaml`, a blocking check verifies the access path is `internal_api`.
+**CI contract check:** Changed code that imports a Supabase client
+(`.createClient()`, `createClient`) or a PostgreSQL driver (`pg`, `postgres`,
+`psycopg2`) will trigger a check that the workload declaration includes an
+access path. If the importing repository is a declared consumer of another
+domain in `DATABASE_OWNERSHIP.yaml`, the check verifies `internal_api` or an
+explicit owner-approved exception recorded in both the ownership registry and
+workload registry.
 
 ### 13.12 Scheduled Workload Release Mapping
 

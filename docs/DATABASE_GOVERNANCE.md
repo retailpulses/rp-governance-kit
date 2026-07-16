@@ -2,7 +2,7 @@
 
 Canonical organization-level database governance policy for Retailpulses repositories.
 
-This document is maintained in `retailpulses/rp-governance-kit`. Repository-local files may add stricter rules but may not weaken central rules. If repo-local governance files and this central policy conflict, agents must stop and report the conflict instead of guessing.
+This document is maintained in `retailpulses/rp-governance-kit`. Repository-local files may add narrower scope or repository-specific declarations but may not contradict central rules. "More restrictive" (e.g., API-only for a consumer that central policy allows to use any approved path) is not automatically valid — the local rule must be compatible with central policy. If repo-local governance files and this central policy conflict, agents must stop and report the conflict instead of guessing.
 
 **Version:** v1.4.0
 **Last updated:** 2026-07-16
@@ -18,16 +18,50 @@ This document is the canonical organization-level database governance policy. It
 - generates or consumes Supabase database types; or
 - queries a Retailpulses-hosted PostgreSQL database.
 
-Repository-local `docs/16_DATABASE_GOVERNANCE.local.md` may add stricter rules specific to that repository's domain. They may not weaken or contradict central rules. Conflicts require the agent to stop and report them.
+Repository-local `docs/16_DATABASE_GOVERNANCE.local.md` may add narrower scope or repository-specific declarations specific to that repository's domain. They may not contradict central rules, and a local rule that is merely "more restrictive" (e.g., API-only without central policy support) is not automatically valid. Conflicts require the agent to stop and report them.
 
 ## 2. Database Domain Ownership
 
 Every schema object (table, view, function, type, trigger, RLS policy, storage bucket) has exactly one owning repository/domain. Ownership is declared in `docs/DATABASE_OWNERSHIP.yaml` in `rp-governance-kit`.
 
 - **Owner repositories** are authoritative for their domain's schema. They create and maintain canonical migrations.
-- **Non-owner repositories** may read or reference shared objects through views, functions, or the Supabase client, but may not alter them without an explicit cross-domain declaration in `DATABASE_OWNERSHIP.yaml`.
+- **Non-owner repositories** may read or reference shared objects through any access path declared and approved per workload in `DATABASE_WORKLOADS.yaml` or the originating Issue. They may not alter schema objects without an explicit cross-domain declaration in `DATABASE_OWNERSHIP.yaml`. Runtime writes to data (INSERT, UPDATE, DELETE) are governed by workload declarations — schema ownership does not itself grant or prohibit them.
 - **Shared-table changes** require an impact analysis that names every known consumer repository. The `DATABASE_OWNERSHIP.yaml` `consumers` field is the authoritative consumer list.
 - **New shared objects** must be proposed through an Issue that identifies the owning domain and known consumers before the first migration is written.
+
+## 2b. Schema Ownership Does Not Determine Runtime Access Path
+
+Schema ownership and runtime access are two distinct governance dimensions. The
+following rules apply:
+
+- **Schema ownership** controls who may create, alter, or delete schema objects
+  (tables, views, functions, triggers, indexes, RLS policies, storage buckets).
+- **Runtime authorization** controls which workload may read or write which data
+  at runtime. A repository may own no schema objects yet be an authorized runtime
+  reader or writer — this is valid by design.
+- **Access path** (`internal_api`, `postgrest`, `supavisor`, `direct_postgres`)
+  is a per-workload decision, declared in `DATABASE_WORKLOADS.yaml` or the
+  originating Issue. Schema ownership does not automatically determine the
+  allowed access path.
+- **A consumer repository** (listed in `DATABASE_OWNERSHIP.yaml` `consumers`)
+  may use any access path that is explicitly declared and approved per workload.
+  The default expectation is `internal_api`, but `postgrest`, `supavisor`, or
+  `direct_postgres` are valid when:
+  - the access path is declared in the workload entry;
+  - the credential uses a least-privilege role provisioned by the domain owner;
+  - the domain owner has approved the access path in the ownership registry or
+    an Issue; and
+  - service-role credentials are not used for consumer workloads.
+- **Direct access is not inherently a bypass.** An undeclared or excessive
+  direct-access path is a governance violation. A declared, approved, least-privilege
+  direct access path is compliant.
+- **"More restrictive" is not automatically "more compliant."** A local rule
+  that claims API-only access is required because the repository lacks schema
+  ownership is incorrect if central policy allows declared alternative paths.
+  Such a local rule must be reported as a conflict, not silently accepted.
+- **Business logic should remain independent of the selected source adapter**
+  where practical, so that the access path can be changed without rewriting the
+  workload.
 
 ## 3. Migration Authority
 
@@ -172,7 +206,7 @@ Repositories that directly query Supabase from TypeScript/JavaScript (via `@supa
 
 - **Type regeneration is required** when affected schema objects (tables, views, functions) change in a migration.
 - **The owner repository decides the generation path** (e.g., `src/types/database.ts`, `supabase/types.ts`).
-- **Repositories accessing Supabase only through an internal API** (e.g., a Cloudflare Worker that is the sole database client) may declare a generated-types exemption in `docs/16_DATABASE_GOVERNANCE.local.md`.
+- **Repositories accessing Supabase only through a non-Supabase-client access path** (e.g., a Cloudflare Worker that is the sole database client) may declare a generated-types exemption in `docs/16_DATABASE_GOVERNANCE.local.md`. The exemption must identify which access path applies and must remain valid: a workload that uses a direct Supabase client (supabase-js, supabase-py) through any access path is not exempt.
 
 ### Generation command
 
@@ -379,7 +413,7 @@ Every workload must declare and follow its approved database access path. Consum
 
 | Path | Description | When to use |
 |------|------------|------------|
-| `internal_api` | Accesses data through an owner-repo Worker API endpoint | Consumer repos that do not own the domain tables |
+| `internal_api` | Accesses data through an owner-repo Worker API endpoint | Default expected path for consumer repos; alternative paths must be explicitly declared and approved |
 | `supavisor` | Connects via Supabase transaction-mode pooler (port 6543) | Direct database access with PgBouncer connection pooling |
 | `postgrest` | Uses Supabase REST API (PostgREST) | Lightweight queries through the Supabase client |
 | `direct_postgres` | Connects directly to PostgreSQL (port 5432) | Schema operations, migrations, maintenance; requires explicit approval |
@@ -393,6 +427,7 @@ Every workload must declare and follow its approved database access path. Consum
   SELECT grants, shop-isolation policies, request limits, and workload entry.
 - Owner repositories may use any path appropriate to their operation type.
 - The declared access path in `DATABASE_WORKLOADS.yaml` is binding. A workload caught using a path other than its declared path is a governance violation.
+- Silent fallback between access paths is prohibited. A workload that implements multiple adapters may not silently switch between them at runtime; the active path must be the declared and approved path. If a failover path is needed, it must be declared, approved, and recorded in the workload entry.
 - VPS-hosted scripts that connect directly to the database must declare `direct_postgres` and include the VPS hostname in the workload declaration.
 
 **CI contract check:** Changed code that imports a Supabase client

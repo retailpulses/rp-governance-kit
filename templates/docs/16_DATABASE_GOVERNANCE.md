@@ -36,7 +36,7 @@ This file is the repository-local entrypoint for Retailpulses database governanc
 4. Read `docs/DATABASE_OWNERSHIP.yaml` in `rp-governance-kit` for domain ownership.
 5. Read `docs/DATABASE_WORKLOADS.yaml` in `rp-governance-kit` before running any recurring or bulk database workload.
 6. Read `docs/DATABASE_INCIDENT_RESPONSE.md` in `rp-governance-kit` before performing any emergency database action.
-7. If this file conflicts with the canonical central policy, stop and report the conflict. The central policy wins unless this repository's rules are stricter.
+7. If this file conflicts with the canonical central policy, stop and report the conflict. The central policy wins. A repository-local rule that is merely "more restrictive" (e.g., API-only for a consumer that central policy allows to use any approved path) is not automatically valid if it conflicts with central policy.
 8. If the installed governance ref recorded here differs from the canonical `@main`, report the version skew before proceeding.
 
 ### Required Reading by Operation Type
@@ -101,7 +101,7 @@ Repositories that do not host any database-writing workloads should state:
 | RLS | Evaluated against declared access class; `worker_only` may have no client policies |
 | Hosted writes | Require explicit approval; never combine audit and remediation |
 | CLI | CI must pin version; local version recorded in `.local.md` |
-| Generated types | Required for direct Supabase clients; exemption available for API-only consumers |
+| Generated types | Required for direct Supabase clients (supabase-js, supabase-py); exemption available for non-Supabase-client access paths (internal_api, direct_postgres without supabase client) |
 | Workload registry | Recurring workloads must be registered in `DATABASE_WORKLOADS.yaml` |
 | N+1 prohibition | No per-record DB/API lookups in loops; use bulk retrieval; declare max_requests_per_invocation and max_requests_per_1000_input_rows |
 | Change-aware writes | Periodic scans must not rewrite unchanged rows for per-row timestamps; prefer run-level freshness |

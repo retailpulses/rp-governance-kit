@@ -32,7 +32,7 @@ domains:
     owner: retailpulses/ticket-handling
     access_class: worker_only
     generated_types: exempt  # Worker is sole Supabase client; types generated from API routes
-    cross_domain: false
+    cross_domain: true
     shared: false
     consumers:
       - retailpulses/RPagentOS  # reads tickets for task linking
@@ -83,6 +83,8 @@ domains:
     consumers:
       - retailpulses/CatalogSync  # reads products, platform_listings, variants
       - retailpulses/ticket-handling  # reads products/accounts for ticket association and seller-share snapshots
+      - retailpulses/skills:sync-giga-saved-products  # product import through owner API
+      - retailpulses/skills:mercari-csv-listing  # listing projection through owner API
     objects:
       tables:
         - products
@@ -105,14 +107,31 @@ domains:
         - source_import_rows
         - platform_accounts
         - import_errors
+        - catalog_sync_runs
+        - catalog_sync_failures
+        - catalog_change_outbox
+        - catalog_sync_api_requests
       views:
         - listing_target_classification_v1
+        - baserow_886994_compat_vw
+        - catalog_sync_products_vw
+        - product_mercari_qty_vw
+        - product_presale_qty_vw
+        - product_rakuten_pricing_vw
       functions:
         - set_updated_at
+        - parse_giga_arrival_date
+        - compute_effective_arrival_date
+        - compute_effective_cost_price
+        - compute_inventory_status
+        - compute_presale_qty
+        - compute_mercari_qty
       storage_buckets: []
     notes: >
       Core product and platform listing data model. CatalogSync reads from these
       tables through an internal Worker API, not direct Supabase client access.
+      CatalogSync and marketplace skills must not receive a Supabase service-role
+      credential; reads and writes use RPagentOS-owned internal API contracts.
 
   # ── Agent OS ──────────────────────────────────────────────
   agent_os:

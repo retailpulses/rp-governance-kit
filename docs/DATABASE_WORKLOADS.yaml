@@ -65,6 +65,84 @@ database: retailpulses_shared
 
 workloads:
 
+  # ── Ticketing Seller Share Event API ──────────────────────────────────
+  ticket_share_event_api:
+    owner_repo: retailpulses/ticket-handling
+    category: agent_operations
+    risk_level: medium
+    domain: ticketing
+    status: pending_approval
+    description: >
+      Event-driven operator create/rotate/revoke operations and seller page
+      resolve/evidence authorization for seven-day ticket share links. The
+      ConoHa viewer calls an authenticated ticketing Worker bridge and has no
+      direct database credentials.
+    trigger: event_driven
+    affected_tables:
+      - tickets
+      - ticket_products
+      - ticket_attachments
+      - platform_accounts
+      - ticket_share_tokens
+      - ticket_share_attachments
+    expected_volume_rows_min: 1
+    expected_volume_rows_target: 2
+    expected_volume_rows_max: 52
+    expected_request_count_min: 1
+    expected_request_count_max: 6
+    expected_runtime_seconds_max: 10
+    concurrency_max: 1
+    statement_timeout_ms: 5000
+    max_retries: 0
+    retry_strategy: none
+    batch_size_min: 1
+    batch_size_max: 50
+    access_path: postgrest
+    source_repo: retailpulses/ticket-handling
+    deployed_from: ""
+    kill_switch:
+      method: deploy_rollback
+      documented_at: "retailpulses/ticket-handling#151"
+      identifier: ENABLE_TICKET_SHARES
+    request_budget:
+      max_requests_per_invocation: 6
+      max_requests_per_1000_input_rows: 6000
+      bulk_fetch_strategy: none
+    change_aware_writes:
+      enabled: true
+      freshness_strategy: run_level
+      unchanged_write_ratio_target: 0.0
+    rollout_gates:
+      dry_run_completed: true
+      canary_completed: false
+      canary_row_limit: 1
+      healthy_cycles_required: 2
+      healthy_cycles_completed: 0
+      re_enable_approval: false
+    approved_by: "retailpulses/ticket-handling#151"
+    approved_at: "2026-07-16"
+    last_reviewed: "2026-07-16"
+    incident_ref: ""
+    notes: >
+      Migration replay and functional lifecycle tests passed in isolated local
+      PostgreSQL. `none` bulk-fetch strategy is intentional because each request
+      is scoped to one ticket/share; product and attachment reads are batched,
+      never N+1. Create/rotate retries are idempotent by client operation UUID,
+      but the Worker performs no automatic retry. Production remains pending
+      until the reviewed ticket-handling commit is recorded in deployed_from,
+      schema backup/preflight gates pass, and the ConoHa canary completes.
+    monitoring:
+      warning_thresholds:
+        connections_pct: 80
+        cpu_pct: 70
+        timeout_rate_pct: 5
+        retry_budget_pct: 30
+      critical_thresholds:
+        connections_pct: 95
+        cpu_pct: 90
+        timeout_rate_pct: 15
+        retry_budget_pct: 50
+
   # ── Example / Template Entry ───────────────────────────────────────────
   # This entry is a documented example. It does not represent a real workload.
   # Replace fields with actual workload data when registering a real workload.

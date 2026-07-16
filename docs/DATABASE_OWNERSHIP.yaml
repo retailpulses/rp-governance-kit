@@ -53,6 +53,8 @@ domains:
         - customer_submissions
         - submission_tokens
         - inbound_ticket_messages
+        - ticket_share_tokens
+        - ticket_share_attachments
       views: []
       functions:
         - generate_ticket_number
@@ -61,6 +63,10 @@ domains:
         - record_ticket_resolution
         - finalize_ticketform_submission
         - finalize_operator_message_send
+        - create_ticket_share
+        - revoke_ticket_share
+        - resolve_ticket_share
+        - authorize_ticket_share_attachment
       storage_buckets: []
     notes: >
       Mixed migration naming: 0001/0002 (grandfathered sequential) + timestamp-based.
@@ -76,7 +82,7 @@ domains:
     shared: false
     consumers:
       - retailpulses/CatalogSync  # reads products, platform_listings, variants
-      - retailpulses/ticket-handling  # reads products for ticket association
+      - retailpulses/ticket-handling  # reads products/accounts for ticket association and seller-share snapshots
     objects:
       tables:
         - products

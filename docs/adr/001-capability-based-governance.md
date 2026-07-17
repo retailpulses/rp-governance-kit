@@ -2,7 +2,7 @@
 
 **Status:** Accepted
 **Date:** 2026-07-17
-**Governance version:** v2.0.0
+**Governance version:** v1.5.0
 **Issue:** [#22](https://github.com/retailpulses/rp-governance-kit/issues/22)
 
 ## Context
@@ -88,7 +88,7 @@ Adopt capability-based governance with risk-based workload controls.
 
 ## References
 
-- [DATABASE_GOVERNANCE.md v2.0.0](../DATABASE_GOVERNANCE.md)
+- [DATABASE_GOVERNANCE.md v1.5.0](../DATABASE_GOVERNANCE.md)
 - [DATABASE_OWNERSHIP.yaml v4](../DATABASE_OWNERSHIP.yaml)
 - [DATABASE_WORKLOADS.yaml v4](../DATABASE_WORKLOADS.yaml)
 - [Issue #22](https://github.com/retailpulses/rp-governance-kit/issues/22)

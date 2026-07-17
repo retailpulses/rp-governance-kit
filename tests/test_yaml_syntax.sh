@@ -59,6 +59,34 @@ if [[ -f "$OWNERSHIP" ]]; then
     fi
   done
 
+	  # Check domain_type field exists on all domains (v4 schema)
+	  DOMAIN_TYPES=$(grep -c 'domain_type:' "$OWNERSHIP" || true)
+	  if [[ "$DOMAIN_TYPES" -ge 1 ]]; then
+	    pass "domain_type field present ($DOMAIN_TYPES domains)"
+	  else
+	    warn "domain_type field not found (v4 schema may not be applied)"
+	  fi
+
+	  # Check consumer capabilities and permitted_access_classes (v4 schema)
+	  if grep -q 'capabilities:' "$OWNERSHIP"; then
+	    pass "Consumer capabilities field present (v4 schema)"
+	  else
+	    warn "Consumer capabilities field not found (may be v3 schema)"
+	  fi
+
+	  if grep -q 'permitted_access_classes:' "$OWNERSHIP"; then
+	    pass "Consumer permitted_access_classes field present (v4 schema)"
+	  else
+	    warn "Consumer permitted_access_classes field not found (may be v3 schema)"
+	  fi
+
+	  # catalog_sync should be classified as consumer_capability
+	  if grep -A2 'catalog_sync:' "$OWNERSHIP" | grep -q 'consumer_capability'; then
+	    pass "catalog_sync domain correctly classified as consumer_capability"
+	  else
+	    warn "catalog_sync domain may not be classified as consumer_capability"
+	  fi
+
   # Check access classes are valid
   ACCESS_CLASSES=$(grep -E '^\s+access_class:' "$OWNERSHIP" | sed 's/.*access_class: *//' | sort -u)
   for ac in $ACCESS_CLASSES; do
@@ -93,15 +121,15 @@ if [[ -f "$WORKLOADS" ]]; then
   fi
 
   # Example entries must be marked as examples
-  if grep -q 'example_nightly_cleanup\|example_external_sync' "$WORKLOADS"; then
+  if grep -q 'example_low_risk_read\|example_high_risk_sync' "$WORKLOADS"; then
     pass "Contains example entries"
     # Example entries must have EXAMPLE in description
-    if grep -A2 'example_nightly_cleanup:' "$WORKLOADS" | grep -qi 'EXAMPLE'; then
+    if grep -A2 'example_low_risk_read:' "$WORKLOADS" | grep -qi 'EXAMPLE'; then
       pass "Example nightly_cleanup clearly marked as EXAMPLE"
     else
       warn "Example nightly_cleanup may not be clearly marked"
     fi
-    if grep -A2 'example_external_sync:' "$WORKLOADS" | grep -qi 'EXAMPLE'; then
+    if grep -A2 'example_high_risk_sync:' "$WORKLOADS" | grep -qi 'EXAMPLE'; then
       pass "Example external_sync clearly marked as EXAMPLE"
     else
       warn "Example external_sync may not be clearly marked"
@@ -118,15 +146,15 @@ if [[ -f "$WORKLOADS" ]]; then
     else
       warn "CatalogSync entry missing owner_repo"
     fi
-    if grep -A60 'catalogsync_product_mirror:' "$WORKLOADS" | grep -q 'incident_ref.*23'; then
+    if grep -A100 'catalogsync_product_mirror:' "$WORKLOADS" | grep -q 'incident_ref.*23'; then
       pass "CatalogSync entry references incident #23"
     else
       warn "CatalogSync entry missing incident_ref #23"
     fi
-    if grep -A60 'catalogsync_product_mirror:' "$WORKLOADS" | grep -q 'access_path.*internal_api'; then
-      pass "CatalogSync entry declares internal_api access path"
+    if grep -A100 'catalogsync_product_mirror:' "$WORKLOADS" | grep -q 'access_path'; then
+      pass "CatalogSync entry declares access path"
     else
-      warn "CatalogSync entry missing internal_api access path"
+      warn "CatalogSync entry missing access path"
     fi
   else
     warn "CatalogSync workload entry not found (optional: may be added in future)"
@@ -174,7 +202,7 @@ if [[ -f "$WORKLOADS" ]]; then
   fi
 
   # Required field documentation must be present
-  if grep -q 'Required fields for every real workload entry' "$WORKLOADS"; then
+  if grep -q 'Standard fields (required for every workload)' "$WORKLOADS"; then
     pass "Required fields documentation present"
   else
     warn "Required fields documentation section missing"

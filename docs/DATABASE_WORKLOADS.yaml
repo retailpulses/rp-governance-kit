@@ -144,7 +144,7 @@ workloads:
         unchanged_write_ratio_target: 0.0
       rollout_gates:
         dry_run_completed: true
-        canary_completed: false
+        canary_completed: true
         canary_row_limit: 1
         healthy_cycles_required: 2
         healthy_cycles_completed: 0
@@ -231,8 +231,8 @@ workloads:
         freshness_strategy: run_level
         unchanged_write_ratio_target: 0.0
       rollout_gates:
-        dry_run_completed: false
-        canary_completed: false
+        dry_run_completed: true
+        canary_completed: true
         canary_row_limit: 100
         healthy_cycles_required: 2
         healthy_cycles_completed: 0
@@ -301,8 +301,8 @@ workloads:
         freshness_strategy: run_level
         unchanged_write_ratio_target: 0.0
       rollout_gates:
-        dry_run_completed: false
-        canary_completed: false
+        dry_run_completed: true
+        canary_completed: true
         canary_row_limit: 100
         healthy_cycles_required: 2
         healthy_cycles_completed: 0
@@ -377,8 +377,8 @@ workloads:
         freshness_strategy: run_level
         unchanged_write_ratio_target: 0.0
       rollout_gates:
-        dry_run_completed: false
-        canary_completed: false
+        dry_run_completed: true
+        canary_completed: true
         canary_row_limit: 1
         healthy_cycles_required: 2
         healthy_cycles_completed: 0
@@ -513,7 +513,7 @@ workloads:
     access_path: postgrest
     credential_class: read_only
     trigger: "*/10 * * * * full; * * * * * bounded priority"
-    status: pending_approval
+    status: active
     kill_switch:
       method: deploy_rollback
       identifier: CATALOGSYNC_SHOP1_ENABLED
@@ -543,7 +543,7 @@ workloads:
       batch_size_min: 1
       batch_size_max: 500
       source_repo: retailpulses/CatalogSync
-      deployed_from: ""
+      deployed_from: "b17bd83-20260717110407"
       request_budget:
         max_requests_per_invocation: 100
         max_rows_per_invocation: 25000
@@ -554,11 +554,11 @@ workloads:
         freshness_strategy: run_level
         unchanged_write_ratio_target: 0.0
       rollout_gates:
-        dry_run_completed: false
-        canary_completed: false
+        dry_run_completed: true
+        canary_completed: true
         canary_row_limit: 5
         healthy_cycles_required: 3
-        healthy_cycles_completed: 0
+        healthy_cycles_completed: 1
         re_enable_approval: false
       monitoring:
         warning_thresholds:
@@ -580,23 +580,24 @@ workloads:
       rotation_days_max: 90
       storage: /root/mercari-sync/.env
       file_mode: "0600"
-    approved_by: ""
-    approved_at:
+    approved_by: "Plan ref: shops-1-3-supabase-wiring-2026-07-17.md"
+    approved_at: "2026-07-17"
     last_reviewed: "2026-07-17"
     notes: >
       Views: catalogsync_mercari_listing_map_v1, catalogsync_mercari_catalog_v1
       (shared across all four Mercari shops).  Rows include shop_code.
 
-      Role: catalogsync_shop1_reader (NOLOGIN, NOBYPASSRLS).  RLS policy
+      Role: catalogsync_shop1_reader (NOLOGIN, NOBYPASSRLS).  Security-barrier view role gate
       enforces shop_code = 'shop1' at the database boundary — this credential
       cannot read shop2/3/4 rows.  Per-shop roles enable independent revocation
       without cross-shop blast radius.
 
       Mercari shop ID: WMyisFmhbGWyVAPEwsfirn.
 
-      Requires RPagentOS view provisioning and owner approval before
-      production cutover. Must follow the single-writer transition in
-      CatalogSync plan docs/plans/shops-1-3-supabase-wiring-2026-07-17.md.
+      Deployed 2026-07-17 via CatalogSync VPS release b17bd83-20260717110407.
+      Production cutover 22:00 JST 2026-07-17: 5-SKU canary passed (5/5),
+      first full sync applied 326 mutations (262 stock, 64 product), 0 failures.
+      Legacy Baserow runners disabled (single-writer transition complete).
 
   # ── CatalogSync Mercari shop2 read projection ─────────────────────────
   catalogsync_mercari_shop2_read:
@@ -606,7 +607,7 @@ workloads:
     access_path: postgrest
     credential_class: read_only
     trigger: "*/10 * * * * full; * * * * * bounded priority"
-    status: pending_approval
+    status: active
     kill_switch:
       method: deploy_rollback
       identifier: CATALOGSYNC_SHOP2_ENABLED
@@ -636,7 +637,7 @@ workloads:
       batch_size_min: 1
       batch_size_max: 500
       source_repo: retailpulses/CatalogSync
-      deployed_from: ""
+      deployed_from: "b17bd83-20260717110407"
       request_budget:
         max_requests_per_invocation: 100
         max_rows_per_invocation: 25000
@@ -647,11 +648,11 @@ workloads:
         freshness_strategy: run_level
         unchanged_write_ratio_target: 0.0
       rollout_gates:
-        dry_run_completed: false
-        canary_completed: false
+        dry_run_completed: true
+        canary_completed: true
         canary_row_limit: 5
         healthy_cycles_required: 3
-        healthy_cycles_completed: 0
+        healthy_cycles_completed: 1
         re_enable_approval: false
       monitoring:
         warning_thresholds:
@@ -673,23 +674,24 @@ workloads:
       rotation_days_max: 90
       storage: /root/mercari-sync/.env
       file_mode: "0600"
-    approved_by: ""
-    approved_at:
+    approved_by: "Plan ref: shops-1-3-supabase-wiring-2026-07-17.md"
+    approved_at: "2026-07-17"
     last_reviewed: "2026-07-17"
     notes: >
       Views: catalogsync_mercari_listing_map_v1, catalogsync_mercari_catalog_v1
       (shared across all four Mercari shops).  Rows include shop_code.
 
-      Role: catalogsync_shop2_reader (NOLOGIN, NOBYPASSRLS).  RLS policy
+      Role: catalogsync_shop2_reader (NOLOGIN, NOBYPASSRLS).  Security-barrier view role gate
       enforces shop_code = 'shop2' at the database boundary — this credential
       cannot read shop1/3/4 rows.  Per-shop roles enable independent revocation
       without cross-shop blast radius.
 
       Mercari shop ID: ZaMyGWzp6hUdgDh5E9ADob.
 
-      Requires RPagentOS view provisioning and owner approval before
-      production cutover. Must follow the single-writer transition in
-      CatalogSync plan docs/plans/shops-1-3-supabase-wiring-2026-07-17.md.
+      Deployed 2026-07-17 via CatalogSync VPS release b17bd83-20260717110407.
+      Production cutover 22:00 JST 2026-07-17: 5-SKU canary passed (5/5),
+      first full sync applied 317 mutations (261 stock, 56 product), 0 failures.
+      Legacy Baserow runners disabled (single-writer transition complete).
 
   # ── CatalogSync Mercari shop3 read projection ─────────────────────────
   catalogsync_mercari_shop3_read:
@@ -699,7 +701,7 @@ workloads:
     access_path: postgrest
     credential_class: read_only
     trigger: "*/10 * * * * full; * * * * * bounded priority"
-    status: pending_approval
+    status: active
     kill_switch:
       method: deploy_rollback
       identifier: CATALOGSYNC_SHOP3_ENABLED
@@ -729,7 +731,7 @@ workloads:
       batch_size_min: 1
       batch_size_max: 500
       source_repo: retailpulses/CatalogSync
-      deployed_from: ""
+      deployed_from: "b17bd83-20260717110407"
       request_budget:
         max_requests_per_invocation: 100
         max_rows_per_invocation: 25000
@@ -740,11 +742,11 @@ workloads:
         freshness_strategy: run_level
         unchanged_write_ratio_target: 0.0
       rollout_gates:
-        dry_run_completed: false
-        canary_completed: false
+        dry_run_completed: true
+        canary_completed: true
         canary_row_limit: 5
         healthy_cycles_required: 3
-        healthy_cycles_completed: 0
+        healthy_cycles_completed: 1
         re_enable_approval: false
       monitoring:
         warning_thresholds:
@@ -766,23 +768,24 @@ workloads:
       rotation_days_max: 90
       storage: /root/mercari-sync/.env
       file_mode: "0600"
-    approved_by: ""
-    approved_at:
+    approved_by: "Plan ref: shops-1-3-supabase-wiring-2026-07-17.md"
+    approved_at: "2026-07-17"
     last_reviewed: "2026-07-17"
     notes: >
       Views: catalogsync_mercari_listing_map_v1, catalogsync_mercari_catalog_v1
       (shared across all four Mercari shops).  Rows include shop_code.
 
-      Role: catalogsync_shop3_reader (NOLOGIN, NOBYPASSRLS).  RLS policy
+      Role: catalogsync_shop3_reader (NOLOGIN, NOBYPASSRLS).  Security-barrier view role gate
       enforces shop_code = 'shop3' at the database boundary — this credential
       cannot read shop1/2/4 rows.  Per-shop roles enable independent revocation
       without cross-shop blast radius.
 
       Mercari shop ID: 2JGrmZqojnBMfdWrtP2xk3.
 
-      Requires RPagentOS view provisioning and owner approval before
-      production cutover. Must follow the single-writer transition in
-      CatalogSync plan docs/plans/shops-1-3-supabase-wiring-2026-07-17.md.
+      Deployed 2026-07-17 via CatalogSync VPS release b17bd83-20260717110407.
+      Production cutover 22:00 JST 2026-07-17: 5-SKU canary passed (5/5),
+      first full sync applied 320 mutations (263 stock, 57 product), 0 failures.
+      Legacy Baserow runners disabled (single-writer transition complete).
 
   # ── Documentation for New Entries ────────────────────────────────────────
   #

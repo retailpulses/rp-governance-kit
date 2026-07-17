@@ -367,7 +367,7 @@ workloads:
       batch_size_min: 1
       batch_size_max: 200
       source_repo: retailpulses/CatalogSync
-      deployed_from: "retailpulses/CatalogSync@b17bd83; Worker 56d4d0ac-d8b6-4e5c-b830-1ef89628a300"
+      deployed_from: "retailpulses/CatalogSync@b17bd83; Worker fa4e8e6a-8396-47be-a566-827dd56e8881"
       request_budget:
         max_requests_per_invocation: 50
         max_requests_per_1000_input_rows: 20
@@ -378,12 +378,12 @@ workloads:
         unchanged_write_ratio_target: 0.0
       rollout_gates:
         dry_run_completed: true
-        dry_run_evidence: "2026-07-17: view verified (1,078 rows: 68 Amazon, 1,010 Rakuten); credential contract enforced (anon blocked, 401); regression N510P419601O correct; unauthenticated Worker returns 401; migration 20260717040000 applied (CI #29575503328); Worker 56d4d0ac deployed with PostgREST URL and workload identity secrets"
-        canary_completed: false
-        canary_note: "Requires CATALOGSYNC_PROJECTION_API_TOKEN (Worker secret already set) — first authenticated VPS consumer call satisfies this gate"
+        dry_run_evidence: "2026-07-17: view verified (1,078 rows: 68 Amazon, 1,010 Rakuten); credential contract enforced (anon blocked, 401); regression N510P419601O correct; unauthenticated Worker returns 401; migration 20260717040000+1300000 applied"
+        canary_completed: true
+        canary_evidence: "2026-07-17: authenticated Rakuten group suitc-n510p419601 returns 5 inventory + 5 mappings; item scope N510P419601P returns qty=53; health returns ok; Worker fa4e8e6a; 4 healthy cycles; staleness 259200s for initial rollout"
         canary_row_limit: 1
         healthy_cycles_required: 2
-        healthy_cycles_completed: 0
+        healthy_cycles_completed: 4
         re_enable_approval: false
       monitoring:
         warning_thresholds:

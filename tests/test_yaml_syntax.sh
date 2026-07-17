@@ -67,17 +67,18 @@ if [[ -f "$OWNERSHIP" ]]; then
 	    warn "domain_type field not found (v4 schema may not be applied)"
 	  fi
 
-	  # Check consumer capabilities and permitted_access_classes (v4 schema)
-	  if grep -q 'capabilities:' "$OWNERSHIP"; then
-	    pass "Consumer capabilities field present (v4 schema)"
+	  # Check consumers are simple strings (v5 schema — access policy moved to DATABASE_ACCESS_POLICY.yaml)
+	  if grep -q "repo:" "$OWNERSHIP"; then
+	    warn "DATABASE_OWNERSHIP.yaml consumers should be simple strings (v5); structured consumers belong in DATABASE_ACCESS_POLICY.yaml"
 	  else
-	    warn "Consumer capabilities field not found (may be v3 schema)"
+	    pass "Consumers are simple strings (v5 — access policy separated)"
 	  fi
 
-	  if grep -q 'permitted_access_classes:' "$OWNERSHIP"; then
-	    pass "Consumer permitted_access_classes field present (v4 schema)"
+
+	  if grep -q "permitted_access_classes:" "$OWNERSHIP"; then
+	    warn "permitted_access_classes found in DATABASE_OWNERSHIP.yaml (should be in DATABASE_ACCESS_POLICY.yaml in v5)"
 	  else
-	    warn "Consumer permitted_access_classes field not found (may be v3 schema)"
+	    pass "permitted_access_classes correctly absent from ownership (v5 — in DATABASE_ACCESS_POLICY.yaml)"
 	  fi
 
 	  # catalog_sync should be classified as consumer_capability
@@ -223,4 +224,74 @@ if [[ -f "$WORKLOADS" ]]; then
   fi
 else
   fail "DATABASE_WORKLOADS.yaml not found"
+fi
+
+# Specific checks for DATABASE_ACCESS_POLICY.yaml
+echo ""
+echo "--- DATABASE_ACCESS_POLICY.yaml schema ---"
+ACCESS_POLICY="$KIT_DIR/docs/DATABASE_ACCESS_POLICY.yaml"
+
+if [[ -f "$ACCESS_POLICY" ]]; then
+  if grep -q '^database:' "$ACCESS_POLICY"; then
+    pass "DATABASE_ACCESS_POLICY.yaml: Has 'database:' key"
+  else
+    fail "DATABASE_ACCESS_POLICY.yaml: Missing 'database:' key"
+  fi
+
+  if grep -q '^access_policy:' "$ACCESS_POLICY"; then
+    pass "DATABASE_ACCESS_POLICY.yaml: Has 'access_policy:' section"
+  else
+    fail "DATABASE_ACCESS_POLICY.yaml: Missing 'access_policy:' section"
+  fi
+
+  if grep -q 'permitted_access_classes:' "$ACCESS_POLICY"; then
+    pass "DATABASE_ACCESS_POLICY.yaml: Has permitted_access_classes field"
+  else
+    fail "DATABASE_ACCESS_POLICY.yaml: Missing permitted_access_classes field"
+  fi
+
+  if grep -q 'service_role_forbidden' "$ACCESS_POLICY"; then
+    pass "DATABASE_ACCESS_POLICY.yaml: Has service_role_forbidden field"
+  else
+    warn "DATABASE_ACCESS_POLICY.yaml: Missing service_role_forbidden field"
+  fi
+else
+  fail "DATABASE_ACCESS_POLICY.yaml not found"
+fi
+
+# Specific checks for DATABASE_CAPABILITIES.yaml
+echo ""
+echo "--- DATABASE_CAPABILITIES.yaml schema ---"
+CAPABILITIES="$KIT_DIR/docs/DATABASE_CAPABILITIES.yaml"
+
+if [[ -f "$CAPABILITIES" ]]; then
+  if grep -q '^database:' "$CAPABILITIES"; then
+    pass "DATABASE_CAPABILITIES.yaml: Has 'database:' key"
+  else
+    fail "DATABASE_CAPABILITIES.yaml: Missing 'database:' key"
+  fi
+
+  if grep -q '^capabilities:' "$CAPABILITIES"; then
+    pass "DATABASE_CAPABILITIES.yaml: Has 'capabilities:' section"
+  else
+    fail "DATABASE_CAPABILITIES.yaml: Missing 'capabilities:' section"
+  fi
+
+  # Key repos should be declared
+  for REPO in retailpulses/RPagentOS retailpulses/CatalogSync retailpulses/ticket-handling retailpulses/OrderMgmt; do
+    if grep -q "  $REPO:" "$CAPABILITIES"; then
+      pass "DATABASE_CAPABILITIES.yaml: '$REPO' declared"
+    else
+      warn "DATABASE_CAPABILITIES.yaml: '$REPO' not found"
+    fi
+  done
+
+  # Capability fields should exist
+  if grep -q 'read:' "$CAPABILITIES" && grep -q 'write:' "$CAPABILITIES" && grep -q 'schema_change:' "$CAPABILITIES"; then
+    pass "DATABASE_CAPABILITIES.yaml: Has read/write/schema_change capability fields"
+  else
+    fail "DATABASE_CAPABILITIES.yaml: Missing capability fields"
+  fi
+else
+  warn "DATABASE_CAPABILITIES.yaml not found (v5 schema — may not be created yet)"
 fi

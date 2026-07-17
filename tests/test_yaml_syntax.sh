@@ -59,6 +59,35 @@ if [[ -f "$OWNERSHIP" ]]; then
     fi
   done
 
+	  # Check domain_type field exists on all domains (v4 schema)
+	  DOMAIN_TYPES=$(grep -c 'domain_type:' "$OWNERSHIP" || true)
+	  if [[ "$DOMAIN_TYPES" -ge 1 ]]; then
+	    pass "domain_type field present ($DOMAIN_TYPES domains)"
+	  else
+	    warn "domain_type field not found (v4 schema may not be applied)"
+	  fi
+
+	  # Check consumers are simple strings (v5 schema — access policy moved to DATABASE_ACCESS_POLICY.yaml)
+	  if grep -q "repo:" "$OWNERSHIP"; then
+	    warn "DATABASE_OWNERSHIP.yaml consumers should be simple strings (v5); structured consumers belong in DATABASE_ACCESS_POLICY.yaml"
+	  else
+	    pass "Consumers are simple strings (v5 — access policy separated)"
+	  fi
+
+
+	  if grep -q "permitted_access_classes:" "$OWNERSHIP"; then
+	    warn "permitted_access_classes found in DATABASE_OWNERSHIP.yaml (should be in DATABASE_ACCESS_POLICY.yaml in v5)"
+	  else
+	    pass "permitted_access_classes correctly absent from ownership (v5 — in DATABASE_ACCESS_POLICY.yaml)"
+	  fi
+
+	  # catalog_sync should be classified as consumer_capability
+	  if grep -A2 'catalog_sync:' "$OWNERSHIP" | grep -q 'consumer_capability'; then
+	    pass "catalog_sync domain correctly classified as consumer_capability"
+	  else
+	    warn "catalog_sync domain may not be classified as consumer_capability"
+	  fi
+
   # Check access classes are valid
   ACCESS_CLASSES=$(grep -E '^\s+access_class:' "$OWNERSHIP" | sed 's/.*access_class: *//' | sort -u)
   for ac in $ACCESS_CLASSES; do
@@ -93,15 +122,15 @@ if [[ -f "$WORKLOADS" ]]; then
   fi
 
   # Example entries must be marked as examples
-  if grep -q 'example_nightly_cleanup\|example_external_sync' "$WORKLOADS"; then
+  if grep -q 'example_low_risk_read\|example_high_risk_sync' "$WORKLOADS"; then
     pass "Contains example entries"
     # Example entries must have EXAMPLE in description
-    if grep -A2 'example_nightly_cleanup:' "$WORKLOADS" | grep -qi 'EXAMPLE'; then
+    if grep -A2 'example_low_risk_read:' "$WORKLOADS" | grep -qi 'EXAMPLE'; then
       pass "Example nightly_cleanup clearly marked as EXAMPLE"
     else
       warn "Example nightly_cleanup may not be clearly marked"
     fi
-    if grep -A2 'example_external_sync:' "$WORKLOADS" | grep -qi 'EXAMPLE'; then
+    if grep -A2 'example_high_risk_sync:' "$WORKLOADS" | grep -qi 'EXAMPLE'; then
       pass "Example external_sync clearly marked as EXAMPLE"
     else
       warn "Example external_sync may not be clearly marked"
@@ -118,15 +147,15 @@ if [[ -f "$WORKLOADS" ]]; then
     else
       warn "CatalogSync entry missing owner_repo"
     fi
-    if grep -A60 'catalogsync_product_mirror:' "$WORKLOADS" | grep -q 'incident_ref.*23'; then
+    if grep -A100 'catalogsync_product_mirror:' "$WORKLOADS" | grep -q 'incident_ref.*23'; then
       pass "CatalogSync entry references incident #23"
     else
       warn "CatalogSync entry missing incident_ref #23"
     fi
-    if grep -A60 'catalogsync_product_mirror:' "$WORKLOADS" | grep -q 'access_path.*internal_api'; then
-      pass "CatalogSync entry declares internal_api access path"
+    if grep -A100 'catalogsync_product_mirror:' "$WORKLOADS" | grep -q 'access_path'; then
+      pass "CatalogSync entry declares access path"
     else
-      warn "CatalogSync entry missing internal_api access path"
+      warn "CatalogSync entry missing access path"
     fi
   else
     warn "CatalogSync workload entry not found (optional: may be added in future)"
@@ -174,7 +203,7 @@ if [[ -f "$WORKLOADS" ]]; then
   fi
 
   # Required field documentation must be present
-  if grep -q 'Required fields for every real workload entry' "$WORKLOADS"; then
+  if grep -q 'Standard fields (required for every workload)' "$WORKLOADS"; then
     pass "Required fields documentation present"
   else
     warn "Required fields documentation section missing"
@@ -195,4 +224,109 @@ if [[ -f "$WORKLOADS" ]]; then
   fi
 else
   fail "DATABASE_WORKLOADS.yaml not found"
+fi
+
+# Specific checks for DATABASE_ACCESS_POLICY.yaml
+echo ""
+echo "--- DATABASE_ACCESS_POLICY.yaml schema ---"
+ACCESS_POLICY="$KIT_DIR/docs/DATABASE_ACCESS_POLICY.yaml"
+
+if [[ -f "$ACCESS_POLICY" ]]; then
+  if grep -q '^database:' "$ACCESS_POLICY"; then
+    pass "DATABASE_ACCESS_POLICY.yaml: Has 'database:' key"
+  else
+    fail "DATABASE_ACCESS_POLICY.yaml: Missing 'database:' key"
+  fi
+
+  if grep -q '^access_policy:' "$ACCESS_POLICY"; then
+    pass "DATABASE_ACCESS_POLICY.yaml: Has 'access_policy:' section"
+  else
+    fail "DATABASE_ACCESS_POLICY.yaml: Missing 'access_policy:' section"
+  fi
+
+  if grep -q 'permitted_access_classes:' "$ACCESS_POLICY"; then
+    pass "DATABASE_ACCESS_POLICY.yaml: Has permitted_access_classes field"
+  else
+    fail "DATABASE_ACCESS_POLICY.yaml: Missing permitted_access_classes field"
+  fi
+
+  if grep -q 'service_role_forbidden' "$ACCESS_POLICY"; then
+    pass "DATABASE_ACCESS_POLICY.yaml: Has service_role_forbidden field"
+  else
+    warn "DATABASE_ACCESS_POLICY.yaml: Missing service_role_forbidden field"
+  fi
+else
+  fail "DATABASE_ACCESS_POLICY.yaml not found"
+fi
+
+# Specific checks for DATABASE_CAPABILITIES.yaml
+echo ""
+echo "--- DATABASE_CAPABILITIES.yaml schema ---"
+CAPABILITIES="$KIT_DIR/docs/DATABASE_CAPABILITIES.yaml"
+
+if [[ -f "$CAPABILITIES" ]]; then
+  if grep -q '^database:' "$CAPABILITIES"; then
+    pass "DATABASE_CAPABILITIES.yaml: Has 'database:' key"
+  else
+    fail "DATABASE_CAPABILITIES.yaml: Missing 'database:' key"
+  fi
+
+  if grep -q '^capabilities:' "$CAPABILITIES"; then
+    pass "DATABASE_CAPABILITIES.yaml: Has 'capabilities:' section"
+  else
+    fail "DATABASE_CAPABILITIES.yaml: Missing 'capabilities:' section"
+  fi
+
+  # Domain-first structure (v2): domains are top-level keys under capabilities
+  # Each domain must have owner and consumers fields
+  for DOMAIN in product_catalog ticketing agent_os task_management project_management listing_intelligence listing_quality order_management catalog_sync; do
+    if grep -q "  $DOMAIN:" "$CAPABILITIES"; then
+      pass "DATABASE_CAPABILITIES.yaml: domain '$DOMAIN' declared"
+    else
+      warn "DATABASE_CAPABILITIES.yaml: domain '$DOMAIN' not found"
+    fi
+  done
+
+  # Each domain should have an owner field
+  DOMAIN_OWNERS=$(grep -c 'owner:' "$CAPABILITIES" || true)
+  if [[ "$DOMAIN_OWNERS" -ge 1 ]]; then
+    pass "DATABASE_CAPABILITIES.yaml: owner field present ($DOMAIN_OWNERS domains)"
+  else
+    fail "DATABASE_CAPABILITIES.yaml: missing owner fields"
+  fi
+
+  # Each domain should have a consumers section
+  if grep -q 'consumers:' "$CAPABILITIES"; then
+    pass "DATABASE_CAPABILITIES.yaml: Has 'consumers:' sections"
+  else
+    fail "DATABASE_CAPABILITIES.yaml: Missing 'consumers:' sections"
+  fi
+
+  # Consumer entries must have capability fields
+  if grep -q 'read:' "$CAPABILITIES" && grep -q 'write:' "$CAPABILITIES" && grep -q 'schema_change:' "$CAPABILITIES"; then
+    pass "DATABASE_CAPABILITIES.yaml: Has read/write/schema_change capability fields"
+  else
+    fail "DATABASE_CAPABILITIES.yaml: Missing capability fields"
+  fi
+
+  # Key repos should appear as consumers under their respective domains
+  if grep -A20 'product_catalog:' "$CAPABILITIES" | grep -q 'retailpulses/CatalogSync'; then
+    pass "DATABASE_CAPABILITIES.yaml: CatalogSync listed as consumer of product_catalog"
+  else
+    warn "DATABASE_CAPABILITIES.yaml: CatalogSync not found under product_catalog"
+  fi
+
+  if grep -A20 'product_catalog:' "$CAPABILITIES" | grep -q 'retailpulses/ticket-handling'; then
+    pass "DATABASE_CAPABILITIES.yaml: ticket-handling listed as consumer of product_catalog"
+  else
+    warn "DATABASE_CAPABILITIES.yaml: ticket-handling not found under product_catalog"
+  fi
+
+  if grep -A10 'ticketing:' "$CAPABILITIES" | grep -q 'retailpulses/RPagentOS'; then
+    pass "DATABASE_CAPABILITIES.yaml: RPagentOS listed as consumer of ticketing"
+  else
+    warn "DATABASE_CAPABILITIES.yaml: RPagentOS not found under ticketing"
+  fi
+else
+  fail "DATABASE_CAPABILITIES.yaml not found"
 fi

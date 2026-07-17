@@ -77,6 +77,8 @@ echo "--- Governance doc set coherence ---"
 CORE_DOCS=(
   "DATABASE_GOVERNANCE.md"
   "DATABASE_OWNERSHIP.yaml"
+  "DATABASE_ACCESS_POLICY.yaml"
+  "DATABASE_CAPABILITIES.yaml"
   "DATABASE_WORKLOADS.yaml"
   "DATABASE_INCIDENT_RESPONSE.md"
 )
@@ -136,6 +138,14 @@ echo ""
 echo "--- CI workflow job inventory ---"
 
 if [[ -f "$CI_DIR/database-governance-checks.yml" ]]; then
+	  # Check enforcement levels section exists (v1.5.0)
+	  if grep -q "Enforcement Levels" "$KIT_DOCS/DATABASE_GOVERNANCE.md"; then
+	    pass "DATABASE_GOVERNANCE.md has Enforcement Levels section (v1.5.0)"
+	  else
+	    warn "DATABASE_GOVERNANCE.md missing Enforcement Levels section (may be pre-v1.5.0)"
+	  fi
+
+
   EXISTING_JOBS=(
     "migration-naming"
     "duplicate-timestamps-local"

@@ -1,0 +1,135 @@
+# Database Access Policy
+# ======================
+# Canonical access policy for Retailpulses shared Supabase.
+#
+# Version: 1
+# Last updated: 2026-07-17
+# Governance ref: v1.5.0
+#
+# Governed by: retailpulses/rp-governance-kit
+#
+# This file answers: what access paths and credential classes are permitted per consumer?
+# For ownership, see DATABASE_OWNERSHIP.yaml
+# For capabilities, see DATABASE_CAPABILITIES.yaml
+# For workload declarations, see DATABASE_WORKLOADS.yaml
+#
+# Schema:
+#   database: logical database name
+#   access_policy:
+#     <consumer-repo>:
+#       <domain>:
+#         permitted_access_classes: [postgrest, internal_api, supavisor, direct_postgres]
+#         default_credential_class: read_only | write_scoped | admin
+#         service_role_forbidden: true | false
+#         notes: <free-text constraints>
+#
+# ── Guardrail: Classes, Not Deployment Instances ──────────────────
+#
+# ACCESS_POLICY contains only access **classes** — named transport mechanisms
+# that describe how a consumer connects. It must not contain deployment
+# instances (specific roles, views, JWTs, IPs, timeouts, or credential names).
+#
+# Good (class):
+#   permitted_access_classes:
+#     - postgrest
+#     - internal_api
+#
+# Bad (deployment instances — these belong in workload or deployment config):
+#   permitted_access_classes:
+#     - postgrest
+#     role: mercari_shop4_reader          # ← deployment config
+#     view: catalogsync_marketplace_v1    # ← deployment config
+#     jwt: eyJhbGciOiJI...                # ← NEVER in any YAML (secret)
+#     ip: 203.0.113.42                    # ← deployment config
+#     timeout: 30000                      # ← workload config
+#
+# Deployment instances (specific roles, views, IPs, timeouts) belong in:
+#   - DATABASE_WORKLOADS.yaml (workload-level configuration)
+#   - Repository deployment config (environment variables, .env, wrangler.toml)
+#   - Platform secret stores (credentials, JWTs, connection strings)
+#
+# If you are adding a field that names a specific database object, credential,
+# IP address, or timeout value, it does not belong in this file.
+
+database: retailpulses_shared
+
+access_policy:
+
+  # ── RPagentOS (domain owner for multiple domains) ─────────
+  retailpulses/RPagentOS:
+    ticketing:
+      permitted_access_classes:
+        - postgrest
+        - internal_api
+      default_credential_class: read_only
+      service_role_forbidden: false  # owner
+      notes: Reads tickets for task linking.
+
+  # ── CatalogSync (consumer of product_catalog) ─────────────
+  retailpulses/CatalogSync:
+    product_catalog:
+      permitted_access_classes:
+        - postgrest
+        - internal_api
+      default_credential_class: read_only
+      service_role_forbidden: true
+      notes: >
+        Read-only consumer. May use PostgREST or internal API per workload
+        declaration. Must not write database rows, create schema objects,
+        or use service_role. Credential scope is workload-specific and
+        declared in DATABASE_WORKLOADS.yaml.
+
+  # ── ticket-handling (consumer of multiple domains) ────────
+  retailpulses/ticket-handling:
+    product_catalog:
+      permitted_access_classes:
+        - postgrest
+        - internal_api
+      default_credential_class: read_only
+      service_role_forbidden: true
+      notes: Reads products/accounts for ticket association and seller-share snapshots.
+    agent_os:
+      permitted_access_classes:
+        - postgrest
+        - internal_api
+      default_credential_class: read_only
+      service_role_forbidden: true
+      notes: Reads agent decisions for ticket context.
+    task_management:
+      permitted_access_classes:
+        - postgrest
+        - internal_api
+      default_credential_class: read_only
+      service_role_forbidden: true
+      notes: Ticket-to-task linking.
+    project_management:
+      permitted_access_classes:
+        - postgrest
+        - internal_api
+      default_credential_class: read_only
+      service_role_forbidden: true
+      notes: Read access for ticket dashboard.
+    listing_quality:
+      permitted_access_classes:
+        - postgrest
+        - internal_api
+      default_credential_class: read_only
+      service_role_forbidden: true
+      notes: Reads listing_review_schedule_status_v1 view.
+
+  # ── Skills (consumer of product_catalog) ──────────────────
+  retailpulses/skills:sync-giga-saved-products:
+    product_catalog:
+      permitted_access_classes:
+        - internal_api
+      default_credential_class: write_scoped
+      service_role_forbidden: true
+      notes: Product import through owner API.
+
+  retailpulses/skills:mercari-csv-listing:
+    product_catalog:
+      permitted_access_classes:
+        - internal_api
+      default_credential_class: read_only
+      service_role_forbidden: true
+      notes: Listing projection through owner API.

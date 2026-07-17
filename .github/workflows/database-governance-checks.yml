@@ -4,8 +4,12 @@ on:
   workflow_call:
 
 jobs:
+  # ═══════════════════════════════════════════════════════════
+  # BLOCKING checks — fail = merge blocked
+  # ═══════════════════════════════════════════════════════════
+
   migration-naming:
-    name: Migration Naming
+    name: "BLOCKING | Migration Naming"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -48,7 +52,7 @@ jobs:
           echo "All new migration filenames valid: OK"
 
   duplicate-timestamps-local:
-    name: Duplicate Timestamps (Local)
+    name: "BLOCKING | Duplicate Timestamps (Local)"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -96,7 +100,7 @@ jobs:
           echo "No duplicate timestamps among new migrations: OK"
 
   migration-docs-impact:
-    name: Migration Docs Impact
+    name: "BLOCKING | Migration Docs Impact"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -133,7 +137,7 @@ jobs:
           fi
 
   secret-detection:
-    name: Secret Detection
+    name: "BLOCKING | Secret Detection"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -219,7 +223,7 @@ jobs:
           echo "No likely database secrets detected: OK"
 
   migration-header:
-    name: Migration Header Check
+    name: "BLOCKING | Migration Header Check"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -272,7 +276,7 @@ jobs:
           echo "All new migrations have required headers: OK"
 
   cross-domain-owner:
-    name: Cross-Domain Owner Check
+    name: "BLOCKING | Cross-Domain Owner Check"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -337,8 +341,12 @@ jobs:
 
           echo "Migration ownership check: OK"
 
+  # ═══════════════════════════════════════════════════════════
+  # PRODUCTION_GATE checks — non-blocking at merge; review before production activation
+  # ═══════════════════════════════════════════════════════════
+
   runtime-impact-declaration:
-    name: Runtime Impact Declaration
+    name: "PRODUCTION_GATE | Runtime Impact Declaration"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -410,10 +418,12 @@ jobs:
               WRITE_INDICATORS=$((WRITE_INDICATORS + 1))
             fi
 
-            # Signal 5: Import/sync scripts
-            if echo "$file" | grep -qiE 'import|sync|backfill' && echo "$CONTENT" | grep -qE '(supabase|pg|postgres|database|db)'; then
-              DETECTED_SIGNALS+=("$file: import/sync/backfill script with database access detected")
-              WRITE_INDICATORS=$((WRITE_INDICATORS + 1))
+            # Signal 5: Database access from runtime scripts (classified by actual DB operations, not filename)
+            if echo "$CONTENT" | grep -qE '(supabase|pg|postgres|database|db)' && echo "$CONTENT" | grep -qE '(\.from\(|\.select\(|\.insert\(|\.upsert\(|\.update\(|\.delete\(|createClient)'; then
+              if ! echo "$file" | grep -qE '\.(test|spec)\.'; then
+                DETECTED_SIGNALS+=("$file: runtime script with database client access detected (classified by DB operations, not filename)")
+                WRITE_INDICATORS=$((WRITE_INDICATORS + 1))
+              fi
             fi
 
           done <<< "$CHANGED"
@@ -473,10 +483,12 @@ jobs:
             echo "::warning::check 'No runtime database impact' in the PR template and ignore this warning."
           fi
 
-  # ── Non-blocking contract checks ─────────────────────────────
+  # ═══════════════════════════════════════════════════════════
+  # ADVISORY checks — informational; non-blocking
+  # ═══════════════════════════════════════════════════════════
 
   n-plus-one-detection:
-    name: N+1 Lookup Detection
+    name: "ADVISORY | N+1 Lookup Detection"
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -543,7 +555,7 @@ jobs:
           fi
 
   change-aware-write-detection:
-    name: Change-Aware Write Detection
+    name: "ADVISORY | Change-Aware Write Detection"
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -624,7 +636,7 @@ jobs:
           fi
 
   access-path-enforcement:
-    name: Access Path Enforcement
+    name: "ADVISORY | Access Path Enforcement"
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -680,7 +692,7 @@ jobs:
             fi
 
             if [[ "$HAS_DIRECT_DB" == true || "$HAS_MIGRATION_CREATE" == true ]]; then
-              echo "::notice file=$file::Verify access path matches declared workload. Consumers must follow the domain's declared approved access boundary."
+              echo "::notice file=$file::Verify access path is declared in workload entry and consistent with permitted access classes in DATABASE_OWNERSHIP.yaml."
             fi
 
           done <<< "$CHANGED"
@@ -690,8 +702,8 @@ jobs:
 
           if [[ "$SIGNALS_FOUND" -gt 0 && "$HAS_ACCESS_PATH" == "no" ]]; then
             echo "::warning::Database client imports detected ($SIGNALS_FOUND files). No access path declaration found in PR body."
-            echo "::warning::Declare the approved access path (internal_api, supavisor, postgrest, or direct_postgres) in the workload declaration."
-            echo "::warning::Consumers must follow the domain's declared approved access boundary as specified in DATABASE_OWNERSHIP.yaml."
+            echo "::warning::Declare the approved access path (postgrest, supavisor, internal_api, or direct_postgres) in the workload declaration."
+            echo "::warning::Consumer repositories may use any explicitly approved server-side access path declared in DATABASE_OWNERSHIP.yaml and DATABASE_WORKLOADS.yaml."
           elif [[ "$SIGNALS_FOUND" -gt 0 ]]; then
             echo "Access path declaration found in PR body: OK"
           else
@@ -699,11 +711,11 @@ jobs:
           fi
 
           echo ""
-          echo "This check is non-blocking. It flags database access patterns without declared access paths."
+          echo "This check is advisory (non-blocking). It flags database access patterns without declared access paths."
           echo "See: docs/DATABASE_GOVERNANCE.md §13.11 (Access Path Declaration)"
 
   run-health-independence-check:
-    name: Run Health Independence Check
+    name: "ADVISORY | Run Health Independence Check"
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -764,7 +776,7 @@ jobs:
   # ── Non-blocking warnings ─────────────────────────────────────
 
   migration-warnings:
-    name: Migration Warnings
+    name: "ADVISORY | Migration Warnings"
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -846,7 +858,7 @@ jobs:
           fi
 
   org-duplicate-timestamps:
-    name: Org-Wide Duplicate Timestamps
+    name: "ADVISORY | Org-Wide Duplicate Timestamps"
     runs-on: ubuntu-latest
     if: always()
     steps:

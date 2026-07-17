@@ -2,26 +2,34 @@
 # ============================
 # Canonical machine-readable domain ownership for Retailpulses shared Supabase.
 #
-# Version: 3
-# Last updated: 2026-07-16
-# Governance ref: v1.4.0
+# Version: 5
+# Last updated: 2026-07-17
+# Governance ref: v1.5.0
+#
+# Governed by: retailpulses/rp-governance-kit
+#
+# This file answers: who owns what?
+# For access policy, see DATABASE_ACCESS_POLICY.yaml
+# For capabilities, see DATABASE_CAPABILITIES.yaml
+# For workload declarations, see DATABASE_WORKLOADS.yaml
 #
 # Schema:
 #   database: logical database name (no project ref or URL)
 #   domains:
 #     <domain-name>:
+#       domain_type: schema | consumer_capability
 #       owner: <owner-repo>
 #       access_class: worker_only | authenticated_user | public_read | internal_admin
 #       generated_types: <path or "exempt">
 #       cross_domain: true | false
 #       shared: true | false
-#       consumers: [<repo>, ...]
+#       consumers: [<repo>, ...]          # repos that read from this domain
 #       objects:
 #         tables: [<name>, ...]
 #         views: [<name>, ...]
 #         functions: [<name>, ...]
 #         storage_buckets: [<name>, ...]
-#       notes: <free-text technical debt or warnings>
+#       notes: <free-text technical debt, warnings, or domain-specific constraints>
 
 database: retailpulses_shared
 
@@ -29,13 +37,14 @@ domains:
 
   # ── Ticketing ─────────────────────────────────────────────
   ticketing:
+    domain_type: schema
     owner: retailpulses/ticket-handling
     access_class: worker_only
-    generated_types: exempt  # Worker is sole Supabase client; types generated from API routes
+    generated_types: exempt
     cross_domain: true
     shared: false
     consumers:
-      - retailpulses/RPagentOS  # reads tickets for task linking
+      - retailpulses/RPagentOS
     objects:
       tables:
         - ticket_issue_types
@@ -75,16 +84,17 @@ domains:
 
   # ── Product Catalog & Platform Listings ───────────────────
   product_catalog:
+    domain_type: schema
     owner: retailpulses/RPagentOS
     access_class: worker_only
-    generated_types: exempt  # Worker is sole Supabase client
+    generated_types: exempt
     cross_domain: false
     shared: false
     consumers:
-      - retailpulses/CatalogSync  # reads products, platform_listings, variants
-      - retailpulses/ticket-handling  # reads products/accounts for ticket association and seller-share snapshots
-      - retailpulses/skills:sync-giga-saved-products  # product import through owner API
-      - retailpulses/skills:mercari-csv-listing  # listing projection through owner API
+      - retailpulses/CatalogSync
+      - retailpulses/ticket-handling
+      - retailpulses/skills:sync-giga-saved-products
+      - retailpulses/skills:mercari-csv-listing
     objects:
       tables:
         - products
@@ -129,29 +139,21 @@ domains:
         - compute_mercari_qty
       storage_buckets: []
     notes: >
-      Core product and platform listing data model. CatalogSync's disabled
-      product-mirror workload reads through the internal Worker API. The
-      separately registered catalogsync_mercari_shop4_read workload may use
-      read-only PostgREST from VPS 160.251.141.110 with a dedicated,
-      owner-provisioned least-privilege role. It may not use service_role,
-      write database rows, access another shop, or create schema objects.
-      The separately registered catalogsync_marketplace_projection_api_read
-      workload may use read-only PostgREST from the CatalogSync Cloudflare
-      Worker through the owner-managed catalogsync_marketplace_projection_v1
-      view and dedicated catalogsync_marketplace_reader role. The CatalogSync
-      marketplace API remains CatalogSync-owned. Other access paths require
-      their own reviewed declaration; schema and migration ownership remain
-      with RPagentOS.
+      Core product and platform listing data model.
+      Schema and migration ownership remain with RPagentOS.
+      Consumer access paths declared in DATABASE_ACCESS_POLICY.yaml.
+      CatalogSync's disabled product-mirror workload is documented in the workload registry.
 
   # ── Agent OS ──────────────────────────────────────────────
   agent_os:
+    domain_type: schema
     owner: retailpulses/RPagentOS
     access_class: worker_only
-    generated_types: exempt  # Worker is sole Supabase client
+    generated_types: exempt
     cross_domain: false
     shared: false
     consumers:
-      - retailpulses/ticket-handling  # reads agent decisions for ticket context
+      - retailpulses/ticket-handling
     objects:
       tables:
         - agent_runs
@@ -166,13 +168,14 @@ domains:
 
   # ── Task Management ───────────────────────────────────────
   task_management:
+    domain_type: schema
     owner: retailpulses/RPagentOS
     access_class: worker_only
     generated_types: exempt
     cross_domain: false
     shared: true
     consumers:
-      - retailpulses/ticket-handling  # ticket → task linking
+      - retailpulses/ticket-handling
     objects:
       tables:
         - tasks
@@ -190,13 +193,14 @@ domains:
 
   # ── Project Management ────────────────────────────────────
   project_management:
+    domain_type: schema
     owner: retailpulses/RPagentOS
     access_class: worker_only
     generated_types: exempt
     cross_domain: false
     shared: true
     consumers:
-      - retailpulses/ticket-handling  # duplicate migration present
+      - retailpulses/ticket-handling
     objects:
       tables:
         - projects
@@ -212,6 +216,7 @@ domains:
 
   # ── Listing Intelligence ──────────────────────────────────
   listing_intelligence:
+    domain_type: schema
     owner: retailpulses/RPagentOS
     access_class: worker_only
     generated_types: exempt
@@ -232,13 +237,14 @@ domains:
 
   # ── Listing Quality Engineering ───────────────────────────
   listing_quality:
+    domain_type: schema
     owner: retailpulses/RPagentOS
     access_class: worker_only
     generated_types: exempt
     cross_domain: false
     shared: false
     consumers:
-      - retailpulses/ticket-handling  # reads listing_review_schedule_status_v1 view
+      - retailpulses/ticket-handling
     objects:
       tables:
         - listing_qwen_reviews
@@ -253,15 +259,15 @@ domains:
     notes: >
       DUPLICATE MIGRATION WARNING: 20260708000002_listing_review_schedule_status.sql
       exists in both RPagentOS (canonical owner) and ticket-handling (near-identical copy,
-      whitespace diff only). The listing_review_schedule_status_v1 view is consumed by
-      ticket-handling's dashboard. ticket-handling copy should be converted to a
+      whitespace diff only). ticket-handling copy should be converted to a
       _remote.sql placeholder in a follow-up reconciliation.
 
   # ── Order Management ──────────────────────────────────────
   order_management:
+    domain_type: schema
     owner: retailpulses/OrderMgmt
     access_class: worker_only
-    generated_types: exempt  # Worker is sole Supabase client
+    generated_types: exempt
     cross_domain: false
     shared: false
     consumers: []
@@ -280,34 +286,29 @@ domains:
       (this repo) AND inbound_ticket_messages.sql (ticket-handling) — different SQL.
       This is a real naming collision. Both migrations already exist on the hosted
       database. Do not rename either without a reviewed reconciliation plan.
-      RLS policies exist on all tables (operator-read pattern). Access class is
-      worker_only because the Worker uses service_role for writes; the operator
-      policies support a future admin dashboard.
+      RLS policies exist on all tables (operator-read pattern).
 
-  # ── Catalog Synchronization ───────────────────────────────
+  # ── Catalog Synchronization (consumer capability domain) ──
   catalog_sync:
+    domain_type: consumer_capability
     owner: retailpulses/CatalogSync
     access_class: worker_only
-    generated_types: exempt  # Accesses Supabase through internal Worker API only
+    generated_types: exempt
     cross_domain: false
     shared: false
     consumers: []
     objects:
-      tables: []  # No owned tables — consumer of product_catalog domain
+      tables: []
       views: []
       functions: []
       storage_buckets: []
     notes: >
-      CatalogSync is a database consumer without migration ownership. Runtime
-      access may use separately declared internal_api or read-only PostgREST
-      workloads; access-path approval does not transfer schema ownership. No
-      supabase/ directory. No migration checks needed.
-      INCIDENT #23 CONFIRMED BOUNDARY: No migrations, no RPC functions, no new
-      tables created by CatalogSync. Any future sync-state tables must be owned
-      by the product_catalog domain (retailpulses/RPagentOS) and coordinated
-      with CatalogSync as a declared consumer. CatalogSync's role is a runtime
-      consumer that syncs data through approved, least-privilege access paths.
-      Re-enable of the disabled product mirror requires explicit approval and its internal_api access path,
-      batch size bounded 100-250, request budget tens/low hundreds, change-aware
-      writes with run-level freshness, and rollout gates per
-      DATABASE_GOVERNANCE.md §13.9-13.14.
+      Consumer capability domain — CatalogSync owns no database schema objects
+      and has no supabase/ directory. Listed here for workload tracking
+      and capability declaration purposes. Does not own migrations for any
+      database domain. Schema ownership for the product_catalog domain
+      remains with retailpulses/RPagentOS.
+      CatalogSync may use approved server-side access paths declared in
+      DATABASE_ACCESS_POLICY.yaml and DATABASE_WORKLOADS.yaml.
+      INCIDENT #23: The disabled product-mirror workload requires explicit
+      re-approval before re-enable.

@@ -1,0 +1,146 @@
+# Database Capabilities Registry
+# ==============================
+# Canonical capability declarations for Retailpulses shared Supabase.
+#
+# Version: 2
+# Last updated: 2026-07-17
+# Governance ref: v1.5.0
+#
+# Governed by: retailpulses/rp-governance-kit
+#
+# This file answers: what can each consumer do with each domain?
+# Organized domain-first so the domain owner can immediately see
+# who can touch their domain.
+#
+# For ownership, see DATABASE_OWNERSHIP.yaml
+# For access policy, see DATABASE_ACCESS_POLICY.yaml
+# For workload declarations, see DATABASE_WORKLOADS.yaml
+#
+# Schema:
+#   database: logical database name
+#   capabilities:
+#     <domain>:
+#       owner: <owner-repo>              # from DATABASE_OWNERSHIP.yaml
+#       domain_type: schema | consumer_capability
+#       consumers:
+#         <consumer-repo>:
+#           read: true | false
+#           write: true | false
+#           schema_change: true | false   # always false for consumers
+#           notes: <free-text constraints>
+
+database: retailpulses_shared
+
+capabilities:
+
+  # ── Product Catalog ───────────────────────────────────────
+  product_catalog:
+    owner: retailpulses/RPagentOS
+    domain_type: schema
+    consumers:
+      retailpulses/CatalogSync:
+        read: true
+        write: false
+        schema_change: false
+        notes: >
+          Read-only consumer. Reads products, platform listings, and marketplace
+          projections. Write workloads (if any) require separate declaration and
+          approval in DATABASE_WORKLOADS.yaml.
+
+      retailpulses/ticket-handling:
+        read: true
+        write: false
+        schema_change: false
+        notes: Reads products and platform accounts for ticket association.
+
+      retailpulses/skills:sync-giga-saved-products:
+        read: true
+        write: true
+        schema_change: false
+        notes: Product import through owner API. Write-scoped credential required.
+
+      retailpulses/skills:mercari-csv-listing:
+        read: true
+        write: false
+        schema_change: false
+        notes: Listing projection reads through owner API.
+
+  # ── Ticketing ─────────────────────────────────────────────
+  ticketing:
+    owner: retailpulses/ticket-handling
+    domain_type: schema
+    consumers:
+      retailpulses/RPagentOS:
+        read: true
+        write: false
+        schema_change: false
+        notes: Reads tickets for task linking and agent context.
+
+  # ── Agent OS ──────────────────────────────────────────────
+  agent_os:
+    owner: retailpulses/RPagentOS
+    domain_type: schema
+    consumers:
+      retailpulses/ticket-handling:
+        read: true
+        write: false
+        schema_change: false
+        notes: Reads agent decisions for ticket context.
+
+  # ── Task Management ───────────────────────────────────────
+  task_management:
+    owner: retailpulses/RPagentOS
+    domain_type: schema
+    consumers:
+      retailpulses/ticket-handling:
+        read: true
+        write: false
+        schema_change: false
+        notes: Ticket-to-task linking reads.
+
+  # ── Project Management ────────────────────────────────────
+  project_management:
+    owner: retailpulses/RPagentOS
+    domain_type: schema
+    consumers:
+      retailpulses/ticket-handling:
+        read: true
+        write: false
+        schema_change: false
+        notes: Read access for ticket dashboard.
+
+  # ── Listing Intelligence ──────────────────────────────────
+  listing_intelligence:
+    owner: retailpulses/RPagentOS
+    domain_type: schema
+    consumers: []
+    # No external consumers. Browser client writes work_items with anon key
+    # (no-RLS MVP pattern — documented technical debt in OWNERSHIP.yaml).
+
+  # ── Listing Quality ───────────────────────────────────────
+  listing_quality:
+    owner: retailpulses/RPagentOS
+    domain_type: schema
+    consumers:
+      retailpulses/ticket-handling:
+        read: true
+        write: false
+        schema_change: false
+        notes: Reads listing_review_schedule_status_v1 view.
+
+  # ── Order Management ──────────────────────────────────────
+  order_management:
+    owner: retailpulses/OrderMgmt
+    domain_type: schema
+    consumers: []
+    # No external consumers. Order data is self-contained.
+
+  # ── Catalog Sync (consumer capability domain) ─────────────
+  catalog_sync:
+    owner: retailpulses/CatalogSync
+    domain_type: consumer_capability
+    consumers: []
+    notes: >
+      Consumer capability domain — CatalogSync owns no database schema objects
+      and has no supabase/ directory. Listed here for workload tracking
+      and capability declaration. Does not own migrations for any database domain.

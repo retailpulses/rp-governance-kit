@@ -4,8 +4,56 @@ Canonical organization-level database governance policy for Retailpulses reposit
 
 This document is maintained in `retailpulses/rp-governance-kit`. Repository-local files may add stricter rules but may not weaken central rules. If repo-local governance files and this central policy conflict, agents must stop and report the conflict instead of guessing.
 
-**Version:** v1.4.0
-**Last updated:** 2026-07-16
+**Version:** v1.5.0
+**Last updated:** 2026-07-17
+
+---
+
+## Governance Principle: Invariants, Not Implementations
+
+Governance defines **invariants** — conditions that must always hold true. It does not prescribe **implementations** — how a repository achieves those conditions.
+
+| Invariant (governance concern) | Implementation (repository concern) |
+|-------------------------------|-------------------------------------|
+| CatalogSync must not modify `product_catalog` schema | CatalogSync must call RPagentOS Worker API |
+| Only the owning repo may create migrations for its domain | Consumer repos must route through `internal_api` |
+| Read-only workloads must use read-only credentials | PostgREST is forbidden; use supavisor |
+| Production writes require a kill switch | Kill switch must be a Wrangler dispatch namespace |
+| High-risk workloads require dry-run evidence | Dry-run must be a shadow-database SQL script |
+
+When an existing rule mixes invariant and implementation, the invariant binding applies. The implementation is advisory unless the invariant cannot be satisfied any other way.
+
+Agents and reviewers: before treating a governance statement as blocking, ask whether it states an invariant or a preferred implementation. Only invariants labeled `MUST` are universal blockers.
+
+---
+
+## Enforcement Levels
+
+Governance rules in this document carry one of four enforcement levels:
+
+| Level | Meaning | Agent behavior |
+|-------|---------|---------------|
+| `MUST` | Universally binding. No exceptions without explicit approval. | Blocking at code-merge gate. |
+| `MUST BEFORE PRODUCTION` | Binding before production activation, but does not block local development, tests, code review, or PR merge. | Blocking at production-activation gate only. |
+| `SHOULD` | Strong recommendation. Deviations require documented justification. | Advisory; repeated deviations escalate. |
+| `ADVISORY` | Best-practice guidance. Informational. | Non-blocking; informational. |
+
+Every rule in this document is labeled with its enforcement level. Unless a rule is explicitly labeled `MUST`, it is not a universal blocker.
+
+### Governance Gates
+
+Governance enforcement applies at distinct gates. Not every rule applies at every gate:
+
+| Gate | When it applies | What it blocks |
+|------|----------------|-----------------|
+| **Code-development** | During local development, testing, and code review | Nothing — advisory only. Pending declarations, registry updates, and credential provisioning do not block development. |
+| **Code-merge** | At PR merge time | Rules labeled `MUST` that are verifiable from the PR diff (e.g., migration naming, secret exposure, cross-domain ownership). |
+| **Production-activation** | Before a workload goes live against a production database | Rules labeled `MUST BEFORE PRODUCTION` and all `MUST` rules that require runtime context (e.g., workload declaration, kill switch, dry-run evidence). |
+| **Destructive-operation** | Before any DROP, TRUNCATE, data rewrite, or compute resize | All `MUST` rules plus explicit approval from the domain owner and infra authority. |
+
+**Principle:** A pending workload declaration, ownership registry update, credential issuance, or production rollout record does not block local development, tests, code review, or PR merge unless the PR itself activates a production database workload.
+
+Agents must not interpret all governance statements as universally blocking. The enforcement level and applicable gate determine when and how each rule is enforced.
 
 ---
 
@@ -22,14 +70,19 @@ Repository-local `docs/16_DATABASE_GOVERNANCE.local.md` may add stricter rules s
 
 ## 2. Database Domain Ownership
 
+`MUST`
+
 Every schema object (table, view, function, type, trigger, RLS policy, storage bucket) has exactly one owning repository/domain. Ownership is declared in `docs/DATABASE_OWNERSHIP.yaml` in `rp-governance-kit`.
 
 - **Owner repositories** are authoritative for their domain's schema. They create and maintain canonical migrations.
-- **Non-owner repositories** may read or reference shared objects through views, functions, or the Supabase client, but may not alter them without an explicit cross-domain declaration in `DATABASE_OWNERSHIP.yaml`.
+- **Consumer repositories** may read or reference shared objects through any approved server-side access path (PostgREST, Supabase client, RPC, Supavisor, direct Postgres, or an internal API), provided the access is least-privilege, declared in the ownership registry, observable where required, and consistent with the workload's read/write capability. They may not alter schema objects without an explicit cross-domain declaration in `DATABASE_OWNERSHIP.yaml`.
+- **Governance defines ownership, capabilities, privilege boundaries, and production risk controls.** Business repositories choose implementation details (transport, access path, internal architecture) within those approved boundaries.
 - **Shared-table changes** require an impact analysis that names every known consumer repository. The `DATABASE_OWNERSHIP.yaml` `consumers` field is the authoritative consumer list.
 - **New shared objects** must be proposed through an Issue that identifies the owning domain and known consumers before the first migration is written.
 
 ## 3. Migration Authority
+
+`MUST`
 
 - Migrations remain in their domain-owning repositories. Do not move migration files between repositories merely to consolidate them.
 - No repository may create canonical migrations for another domain by pulling the remote schema with `supabase db pull`. `db pull` produces a local snapshot for development; it does not transfer ownership.
@@ -37,6 +90,8 @@ Every schema object (table, view, function, type, trigger, RLS policy, storage b
 - Never delete or rewrite historical migration files without a reviewed reconciliation plan that explains: why the rewrite is safe, which repos are affected, and how replay consistency is preserved.
 
 ## 4. Migration Naming
+
+`MUST`
 
 ### Shared hosted-history alignment artifacts
 
@@ -78,6 +133,8 @@ Existing sequential names (`0001_...`, `0002_...`) and legacy timestamp formats 
 
 ## 5. Migration Quality
 
+`MUST`
+
 ### Every migration file must include a header comment
 
 ```sql
@@ -110,6 +167,8 @@ Existing sequential names (`0001_...`, `0002_...`) and legacy timestamp formats 
 
 ## 6. Hosted Write Safety
 
+`MUST`
+
 ### Read-only audit
 
 Read-only inspection of the hosted database (schema introspection, row counts, drift detection) is permitted when credentials and project linkage have been approved.
@@ -140,6 +199,8 @@ Never combine read-only audit and hosted write remediation in a single automated
 
 ## 7. Supabase CLI Policy
 
+`SHOULD`
+
 ### Workstations
 
 Workstations may use a globally installed Supabase CLI (e.g., Homebrew `supabase`). The installed version should be recorded in the repository's `docs/16_DATABASE_GOVERNANCE.local.md`.
@@ -163,6 +224,8 @@ The pinned CI version and local workstation version should be recorded in `docs/
 
 ## 8. Access Classes and RLS
 
+`MUST`
+
 Every owned table must declare one access class in `DATABASE_OWNERSHIP.yaml`:
 
 | Access class | Meaning | RLS requirement |
@@ -183,19 +246,23 @@ Every owned table must declare one access class in `DATABASE_OWNERSHIP.yaml`:
 
 ## 9. Generated Types
 
+`SHOULD`
+
 ### Requirement
 
 Repositories that directly query Supabase from TypeScript/JavaScript (via `@supabase/supabase-js` or equivalent) must generate and commit database types, or reproducibly consume them from a published source.
 
 - **Type regeneration is required** when affected schema objects (tables, views, functions) change in a migration.
 - **The owner repository decides the generation path** (e.g., `src/types/database.ts`, `supabase/types.ts`).
-- **Repositories accessing Supabase only through an internal API** (e.g., a Cloudflare Worker that is the sole database client) may declare a generated-types exemption in `docs/16_DATABASE_GOVERNANCE.local.md`.
+- **Repositories that do not directly query Supabase from TypeScript/JavaScript** (e.g., those that access data through an intermediate API, or use non-TypeScript runtimes) may declare a generated-types exemption in `docs/16_DATABASE_GOVERNANCE.local.md`.
 
 ### Generation command
 
 The canonical generation command should be documented in `docs/16_DATABASE_GOVERNANCE.local.md` and should use the pinned project reference (never expose the project ref in committed files).
 
 ## 10. Dashboard and Emergency Changes
+
+`MUST`
 
 ### Normal operations
 
@@ -215,6 +282,8 @@ If the Supabase migration ledger (`.supabase/migration_*.txt` or remote `supabas
 
 ## 11. Environment Separation
 
+`SHOULD`
+
 ### Target architecture
 
 Production and staging should use separate Supabase projects (or separate PostgreSQL databases). Staging workloads must not write to production databases.
@@ -233,6 +302,8 @@ Local development should use `supabase start` (local Supabase stack) where pract
 
 ## 12. Audit Cadence
 
+`ADVISORY`
+
 The following organization-level checks should run periodically (target: monthly, or per governance release):
 
 | Check | Description |
@@ -249,6 +320,8 @@ The following organization-level checks should run periodically (target: monthly
 Audit results are non-blocking warnings by default. Repeated findings across multiple audit cycles should be escalated to Issues.
 
 ## 13. Runtime Workload Safety
+
+`MUST` (subsections may vary: see individual enforcement levels below)
 
 Every automated or agent-driven operation that writes to, syncs with, or bulk-loads into a Retailpulses database must follow these runtime workload rules. Code review and CI can flag structural issues (migration naming, headers, ownership); runtime workload rules govern how that code executes against a live database.
 
@@ -356,6 +429,8 @@ Evidence may be stored as a CI artifact, a Worker log entry, or a structured com
 
 ### 13.9 N+1 Lookup Prohibition
 
+`MUST`
+
 Per-record N+1 database or API lookups in catalog or bulk processing loops are prohibited when a bounded bulk retrieval is possible. This is one of the most common and severe resource-exhaustion patterns — a loop that fetches one record at a time for thousands of inputs can silently consume orders of magnitude more database capacity than the declared workload budget.
 
 **Rule:** Any loop that iterates over input items and performs a database query or API call per item must instead use a bounded bulk retrieval (e.g., a single query with `IN (...)` filter, a batch GET endpoint, or cursor-paginated bulk fetch). If bulk retrieval is genuinely impossible, the workload declaration must justify why and include a request-count budget expressed against the input size.
@@ -390,35 +465,32 @@ A `unchanged_write_ratio` above 0.0 requires an explanation in the post-run evid
 
 ### 13.11 Access Path Declaration
 
-Every workload must declare and follow its approved database access path. Consumer repositories must not bypass a declared internal API boundary or introduce owner-domain RPC, schema migrations, or direct client access to another domain's tables.
+`MUST BEFORE PRODUCTION`
+
+Every workload must declare and follow an approved database access path. The governance defines the capability and risk boundary; business repositories choose the transport within that boundary.
 
 **Valid access paths:**
 
-| Path | Description | When to use |
+| Path | Description | Typical use |
 |------|------------|------------|
-| `internal_api` | Accesses data through an owner-repo Worker API endpoint | Consumer repos that do not own the domain tables |
-| `supavisor` | Connects via Supabase transaction-mode pooler (port 6543) | Direct database access with PgBouncer connection pooling |
-| `postgrest` | Uses Supabase REST API (PostgREST) | Lightweight queries through the Supabase client |
-| `direct_postgres` | Connects directly to PostgreSQL (port 5432) | Schema operations, migrations, maintenance; requires explicit approval |
+| `postgrest` | Supabase REST API (PostgREST) via Supabase client or HTTP | Server-side read queries, lightweight API access |
+| `supavisor` | Supabase transaction-mode pooler (port 6543) | Direct database access with connection pooling |
+| `internal_api` | Owner-repo Worker API endpoint | When an owner provides a curated API; consumer repos may use this or any other approved path |
+| `direct_postgres` | Direct PostgreSQL connection (port 5432) | Schema operations, migrations, maintenance; requires explicit approval |
 
 **Rules:**
 
-- Consumer repositories of a domain (listed in `DATABASE_OWNERSHIP.yaml` as `consumers`) must follow the domain's declared approved access boundary. The binding rule is the repository/domain's approved access boundary as declared in `DATABASE_OWNERSHIP.yaml` and its workload entries in `DATABASE_WORKLOADS.yaml`. Consumers may use an access path other than `internal_api` only when that alternative path is explicitly declared and approved by the owning domain in the ownership registry or workload entry.
-- CatalogSync's disabled product-mirror workload must use `internal_api`, per
-  incident #23. The separately declared, read-only Mercari shop4 projection may
-  use `postgrest` only with the owner-approved dedicated role, column-limited
-  SELECT grants, shop-isolation policies, request limits, and workload entry.
+- A consumer repository may use any explicitly approved server-side access path, including PostgREST, Supabase client, RPC, Supavisor, direct Postgres, or an internal API, provided the access is:
+  1. **Least-privilege** — credential scope matches the workload's declared read/write capability.
+  2. **Declared** — the access path is recorded in the workload entry and consistent with the consumer's permitted access classes in `DATABASE_ACCESS_POLICY.yaml`.
+  3. **Observable** — where the workload's risk profile requires monitoring, the access path supports it.
+  4. **Capability-consistent** — read-only workloads use read-only credentials; write workloads use write-scoped credentials.
 - Owner repositories may use any path appropriate to their operation type.
-- The declared access path in `DATABASE_WORKLOADS.yaml` is binding. A workload caught using a path other than its declared path is a governance violation.
+- The declared access path in `DATABASE_WORKLOADS.yaml` is binding for production workloads. A workload caught using a path other than its declared path is a governance violation at the production-activation gate.
 - VPS-hosted scripts that connect directly to the database must declare `direct_postgres` and include the VPS hostname in the workload declaration.
+- Frontend code must never receive privileged database credentials (this is a `MUST` rule at the code-merge gate).
 
-**CI contract check:** Changed code that imports a Supabase client
-(`.createClient()`, `createClient`) or a PostgreSQL driver (`pg`, `postgres`,
-`psycopg2`) will trigger a check that the workload declaration includes an
-access path. If the importing repository is a declared consumer of another
-domain in `DATABASE_OWNERSHIP.yaml`, the check verifies `internal_api` or an
-explicit owner-approved exception recorded in both the ownership registry and
-workload registry.
+**CI contract check:** Changed code that imports a Supabase client (`.createClient()`, `createClient`) or a PostgreSQL driver (`pg`, `postgres`, `psycopg2`) will trigger an advisory check that the workload declaration includes an access path. This check is non-blocking at the code-merge gate. It becomes blocking at the production-activation gate for workloads classified as `write` or `high` risk.
 
 ### 13.12 Scheduled Workload Release Mapping
 
@@ -486,6 +558,8 @@ The finalization and health assessment of the current run must be independent fr
 
 ## 14. Resource Management
 
+`MUST BEFORE PRODUCTION`
+
 ### 14.1 Compute Resize
 
 Supabase compute (e.g., micro → small → medium) changes require:
@@ -526,6 +600,8 @@ Thresholds should be declared in `docs/DATABASE_WORKLOADS.yaml` for recurring wo
 
 ## 15. Reporting and Governance
 
+`MUST BEFORE PRODUCTION` (workload registry); `ADVISORY` (periodic audits)
+
 ### 15.1 Workload Registry
 
 All recurring database workloads must be registered in `docs/DATABASE_WORKLOADS.yaml`. One-off workloads must be declared in their originating Issue or work brief. The registry is the authoritative inventory of what runs against which database and with what safety controls.
@@ -544,7 +620,9 @@ See `docs/DATABASE_INCIDENT_RESPONSE.md` for resource-exhaustion, outage, and re
 
 ## References
 
-- `docs/DATABASE_OWNERSHIP.yaml` — machine-readable domain ownership registry
+- `docs/DATABASE_OWNERSHIP.yaml` — machine-readable domain ownership registry (who owns what)
+- `docs/DATABASE_ACCESS_POLICY.yaml` — machine-readable access policy (what paths and credentials are permitted)
+- `docs/DATABASE_CAPABILITIES.yaml` — machine-readable capability registry (domain-first: what each consumer may do with each domain)
 - `docs/DATABASE_WORKLOADS.yaml` — machine-readable workload registry
 - `docs/DATABASE_INCIDENT_RESPONSE.md` — incident response playbook
 - `docs/16_DATABASE_GOVERNANCE.md` (repo-local) — installed reference pointing to this canonical policy
@@ -557,5 +635,5 @@ See `docs/DATABASE_INCIDENT_RESPONSE.md` for resource-exhaustion, outage, and re
 This document is part of `retailpulses/rp-governance-kit`. Changes must follow the governance repository's Issue-first workflow. The canonical GitHub URL is:
 
 ```
-https://github.com/retailpulses/rp-governance-kit/blob/v1.4.0/docs/DATABASE_GOVERNANCE.md
+https://github.com/retailpulses/rp-governance-kit/blob/v1.5.0/docs/DATABASE_GOVERNANCE.md
 ```

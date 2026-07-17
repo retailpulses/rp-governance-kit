@@ -339,7 +339,7 @@ workloads:
     access_path: postgrest
     credential_class: read_only
     trigger: "manual canary; schedule enabled only after rollout gates"
-    status: pending_approval
+    status: active
     kill_switch:
       method: deploy_rollback
       identifier: CATALOGSYNC_MARKETPLACE_PROJECTION_ENABLED
@@ -366,7 +366,7 @@ workloads:
       batch_size_min: 1
       batch_size_max: 200
       source_repo: retailpulses/CatalogSync
-      deployed_from: ""
+      deployed_from: "retailpulses/CatalogSync@57ceb1e1c31e749088063ac7ea18555d5dc413bc"
       request_budget:
         max_requests_per_invocation: 50
         max_requests_per_1000_input_rows: 20
@@ -400,8 +400,8 @@ workloads:
       service_role_forbidden: true
       generic_anon_forbidden: true
       operation_mode: read_only
-    approved_by: "Pending RPagentOS projection PR and CatalogSync#35 merge"
-    approved_at: ""
+    approved_by: "Retailpulses owner; evidence retailpulses/RPagentOS#32 issuecomment-4999776725"
+    approved_at: "2026-07-17"
     last_reviewed: "2026-07-17"
     notes: >
       Two-hop architecture: VPS consumers call the CatalogSync-owned

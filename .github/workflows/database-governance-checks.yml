@@ -312,7 +312,7 @@ jobs:
               MIG_OWNER_LOWER=$(echo "$MIG_OWNER" | tr '[:upper:]' '[:lower:]')
               if [[ "$MIG_OWNER_LOWER" != *"$REPO_NAME"* ]]; then
                 HAS_EXCEPTION=false
-                if grep -qE '-- Cross-domain exception:|cross.domain.exception' "$migration" 2>/dev/null; then
+                if grep -qE -- '-- Cross-domain exception:|cross.domain.exception' "$migration" 2>/dev/null; then
                   HAS_EXCEPTION=true
                 fi
 

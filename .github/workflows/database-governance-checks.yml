@@ -31,8 +31,10 @@ jobs:
           while IFS= read -r migration; do
             [[ -z "$migration" ]] && continue
             fname=$(basename "$migration")
-            if ! echo "$fname" | grep -qE '^[0-9]{14}_[a-z0-9_]+\.sql$'; then
+            if ! echo "$fname" | grep -qE '^[0-9]{14}_[a-z0-9_]+\.sql$' && \
+               ! echo "$fname" | grep -qE '^[0-9]{1,13}_shared_remote\.sql$'; then
               echo "::error file=$migration::Migration filename does not match required pattern: YYYYMMDDHHMMSS_description.sql"
+              echo "::error file=$migration::Legacy hosted versions are allowed only as *_shared_remote.sql history-alignment artifacts."
               echo "::error file=$migration::Got: $fname"
               FAILED=1
             fi

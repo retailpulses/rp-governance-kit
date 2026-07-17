@@ -38,6 +38,23 @@ Every schema object (table, view, function, type, trigger, RLS policy, storage b
 
 ## 4. Migration Naming
 
+### Shared hosted-history alignment artifacts
+
+Repositories sharing one hosted Supabase migration ledger may acknowledge an
+already-applied migration owned by another repository with a comment-only file
+named `<hosted-version>_shared_remote.sql`. This is a history-alignment artifact,
+not a schema migration or ownership claim.
+
+- New executable migrations still require a unique 14-digit timestamp.
+- A shorter legacy version is allowed only with the exact `_shared_remote.sql`
+  suffix so it can match the immutable hosted ledger version.
+- The file must contain the standard migration governance headers, identify the
+  authoritative repository and domain, contain no executable SQL, and link the
+  reviewed reconciliation evidence.
+- The artifact must never be used to conceal an unknown migration. Unknown
+  provenance remains an explicit unresolved governance defect.
+- No hosted ledger repair is implied or authorized by adding the artifact.
+
 ### New migrations
 
 Use UTC timestamp names:

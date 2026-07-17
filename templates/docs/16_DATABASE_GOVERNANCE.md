@@ -4,11 +4,15 @@ This file is the repository-local entrypoint for Retailpulses database governanc
 
 **Canonical policy:** [`retailpulses/rp-governance-kit` → `docs/DATABASE_GOVERNANCE.md`](https://github.com/retailpulses/rp-governance-kit/blob/__REF__/docs/DATABASE_GOVERNANCE.md)
 
+**Canonical ownership registry:** [`retailpulses/rp-governance-kit` → `docs/DATABASE_OWNERSHIP.yaml`](https://github.com/retailpulses/rp-governance-kit/blob/__REF__/docs/DATABASE_OWNERSHIP.yaml)
+
+**Canonical access policy:** [`retailpulses/rp-governance-kit` → `docs/DATABASE_ACCESS_POLICY.yaml`](https://github.com/retailpulses/rp-governance-kit/blob/__REF__/docs/DATABASE_ACCESS_POLICY.yaml)
+
+**Canonical capabilities:** [`retailpulses/rp-governance-kit` → `docs/DATABASE_CAPABILITIES.yaml`](https://github.com/retailpulses/rp-governance-kit/blob/__REF__/docs/DATABASE_CAPABILITIES.yaml)
+
 **Canonical workload registry:** [`retailpulses/rp-governance-kit` → `docs/DATABASE_WORKLOADS.yaml`](https://github.com/retailpulses/rp-governance-kit/blob/__REF__/docs/DATABASE_WORKLOADS.yaml)
 
 **Canonical incident response:** [`retailpulses/rp-governance-kit` → `docs/DATABASE_INCIDENT_RESPONSE.md`](https://github.com/retailpulses/rp-governance-kit/blob/__REF__/docs/DATABASE_INCIDENT_RESPONSE.md)
-
-**Canonical ownership registry:** [`retailpulses/rp-governance-kit` → `docs/DATABASE_OWNERSHIP.yaml`](https://github.com/retailpulses/rp-governance-kit/blob/__REF__/docs/DATABASE_OWNERSHIP.yaml)
 
 **Installed governance ref:** `__REF__`
 **Installed at:** `__INSTALLED_AT__`

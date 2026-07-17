@@ -3,63 +3,90 @@
 # Canonical machine-readable registry of all recurring database workloads.
 # One-off workloads are declared in their originating Issue or work brief.
 #
-# Version: 3
-# Last updated: 2026-07-16
-# Governance ref: v1.4.0
+# Version: 4
+# Last updated: 2026-07-17
+# Governance ref: v2.0.0
 #
-# Schema per workload entry:
-#   workload_id: unique identifier (kebab-case)
-#   category: imports | syncs | backfills | scheduled_jobs | agent_operations | maintenance | diagnostics
-#   risk_level: low | medium | high
-#   domain: domain from DATABASE_OWNERSHIP.yaml
-#   description: human-readable description
-#   owner_repo: GitHub owner/repo that owns this workload
-#   status: active | disabled | pending_approval
-#   trigger: cron_expression | manual | event_driven | on_deploy
-#   affected_tables: [table_name, ...]
-#   expected_volume_rows_min: minimum expected row count per invocation
-#   expected_volume_rows_target: normal expected row count per invocation
-#   expected_volume_rows_max: maximum expected row count per invocation
-#   expected_request_count_min: minimum estimated request count per invocation
-#   expected_request_count_max: maximum estimated request count per invocation
-#   expected_runtime_seconds_max: expected runtime ceiling in seconds
-#   concurrency_max: maximum concurrent connections
-#   statement_timeout_ms: per-query timeout in milliseconds
-#   max_retries: maximum retries per unit of work
-#   retry_strategy: exponential_backoff_with_jitter | fixed_delay | none
-#   batch_size_min: min rows per INSERT/UPDATE/DELETE statement
-#   batch_size_max: max rows per INSERT/UPDATE/DELETE statement (must not exceed §13.3 limit)
-#   access_path: internal_api | supavisor | postgrest | direct_postgres
-#   source_repo: GitHub repo containing the workload source
-#   deployed_from: commit SHA or release tag of the deployed code
+# Governed by: retailpulses/rp-governance-kit
+#
+# ── Risk-Based Profiles ─────────────────────────────────────
+#
+# Every workload entry starts with a standard declaration.
+# Only workloads that meet one or more high-risk conditions require
+# the extended safety_profile section.
+#
+# Standard declaration (minimum for all workloads):
+#
+#   workload_id:               unique identifier (kebab-case)
+#   owner_repo:                GitHub owner/repo
+#   domain:                    domain from DATABASE_OWNERSHIP.yaml
+#   mode:                      read_only | write
+#   access_path:               postgrest | supavisor | internal_api | direct_postgres
+#   credential_class:          read_only | write_scoped | admin | service_role
+#   trigger:                   cron_expression | manual | event_driven | on_deploy
+#   status:                    active | disabled | pending_approval
 #   kill_switch:
-#     method: worker_cancel | dashboard_session_terminate | sql_terminate_backend | deploy_rollback
-#     documented_at: where the kill-switch procedure is documented
-#     identifier: config key, cron name, or timer name that disables this workload
-#   request_budget:
-#     max_requests_per_invocation: absolute ceiling per run
-#     max_requests_per_1000_input_rows: requests per 1k input rows (must scale with input; formula must be documented)
-#     bulk_fetch_strategy: IN-clause-batch | bulk-endpoint | pagination-cursor | none
-#   change_aware_writes:
-#     enabled: true | false
-#     freshness_strategy: run_level | per_row (requires justification if per_row)
-#     unchanged_write_ratio_target: decimal (target; ratios above this trigger review)
-#   rollout_gates:
-#     dry_run_completed: true | false
-#     canary_completed: true | false
-#     canary_row_limit: integer
-#     healthy_cycles_required: integer
-#     healthy_cycles_completed: integer
-#     re_enable_approval: true | false (required if previously disabled by incident)
-#   expected_runtime_seconds: integer
-#   incident_ref: GitHub issue URL or #number if previously disabled
-#   monitoring:
-#     warning_thresholds: { connections_pct: 80, cpu_pct: 70, timeout_rate_pct: 5, retry_budget_pct: 30 }
-#     critical_thresholds: { connections_pct: 95, cpu_pct: 90, timeout_rate_pct: 15, retry_budget_pct: 50 }
-#   approved_by: who authorized this workload
-#   approved_at: YYYY-MM-DD
-#   last_reviewed: YYYY-MM-DD
-#   notes: free-text notes, dependencies, known limitations
+#     method:                  worker_cancel | dashboard_session_terminate | sql_terminate_backend | deploy_rollback
+#     identifier:              config key, cron name, or timer name that disables this workload
+#
+# Extended safety_profile (required when any condition applies):
+#
+#   Conditions requiring extended profile:
+#     - mode: write                           (database writes)
+#     - High expected row/request volume      (high volume)
+#     - trigger is cron/scheduled             (frequent cron)
+#     - credential_class is admin or service_role (privileged credential)
+#     - Destructive or data-rewriting ops     (destructive transformation)
+#     - Large blast radius                    (many consumers or domains affected)
+#     - Prior related incident                (incident_ref is set)
+#
+#   safety_profile:
+#     category:                imports | syncs | backfills | scheduled_jobs | agent_operations | maintenance | diagnostics
+#     risk_level:              low | medium | high
+#     description:             human-readable description
+#     affected_tables:         [table_name, ...]
+#     expected_volume_rows_min: integer
+#     expected_volume_rows_target: integer (optional)
+#     expected_volume_rows_max: integer
+#     expected_request_count_min: integer
+#     expected_request_count_max: integer
+#     expected_runtime_seconds_max: integer
+#     concurrency_max:         integer
+#     statement_timeout_ms:    integer
+#     max_retries:             integer
+#     retry_strategy:          exponential_backoff_with_jitter | fixed_delay | none
+#     batch_size_min:          integer (optional)
+#     batch_size_max:          integer
+#     source_repo:             GitHub repo containing the workload source
+#     deployed_from:           commit SHA or release tag
+#     request_budget:
+#       max_requests_per_invocation: integer
+#       max_requests_per_1000_input_rows: integer
+#       bulk_fetch_strategy:  IN-clause-batch | bulk-endpoint | pagination-cursor | none
+#     change_aware_writes:
+#       enabled:               true | false
+#       freshness_strategy:    run_level | per_row
+#       unchanged_write_ratio_target: decimal
+#     rollout_gates:
+#       dry_run_completed:     true | false
+#       canary_completed:      true | false
+#       canary_row_limit:      integer
+#       healthy_cycles_required: integer
+#       healthy_cycles_completed: integer
+#       re_enable_approval:    true | false
+#     monitoring:
+#       warning_thresholds:    { connections_pct, cpu_pct, timeout_rate_pct, retry_budget_pct }
+#       critical_thresholds:   { connections_pct, cpu_pct, timeout_rate_pct, retry_budget_pct }
+#     incident_ref:            GitHub issue URL or #number
+#     rollback:                URL or description of how to undo this workload's effects
+#
+# Optional fields for any entry:
+#   depends_on:               [workload_id, ...]
+#   excluded_windows:         cron expressions or time windows when this workload must NOT run
+#   approved_by:              who authorized
+#   approved_at:              YYYY-MM-DD
+#   last_reviewed:            YYYY-MM-DD
+#   notes:                    free-text notes, dependencies, known limitations
 
 database: retailpulses_shared
 
@@ -68,61 +95,75 @@ workloads:
   # ── Ticketing Seller Share Event API ──────────────────────────────────
   ticket_share_event_api:
     owner_repo: retailpulses/ticket-handling
-    category: agent_operations
-    risk_level: medium
     domain: ticketing
-    status: pending_approval
-    description: >
-      Event-driven operator create/rotate/revoke operations and seller page
-      resolve/evidence authorization for seven-day ticket share links. The
-      ConoHa viewer calls an authenticated ticketing Worker bridge and has no
-      direct database credentials.
-    trigger: event_driven
-    affected_tables:
-      - tickets
-      - ticket_products
-      - ticket_attachments
-      - platform_accounts
-      - ticket_share_tokens
-      - ticket_share_attachments
-    expected_volume_rows_min: 1
-    expected_volume_rows_target: 2
-    expected_volume_rows_max: 52
-    expected_request_count_min: 1
-    expected_request_count_max: 6
-    expected_runtime_seconds_max: 10
-    concurrency_max: 1
-    statement_timeout_ms: 5000
-    max_retries: 0
-    retry_strategy: none
-    batch_size_min: 1
-    batch_size_max: 50
+    mode: write
     access_path: postgrest
-    source_repo: retailpulses/ticket-handling
-    deployed_from: ""
+    credential_class: write_scoped
+    trigger: event_driven
+    status: pending_approval
     kill_switch:
       method: deploy_rollback
-      documented_at: "retailpulses/ticket-handling#151"
       identifier: ENABLE_TICKET_SHARES
-    request_budget:
-      max_requests_per_invocation: 6
-      max_requests_per_1000_input_rows: 6000
-      bulk_fetch_strategy: none
-    change_aware_writes:
-      enabled: true
-      freshness_strategy: run_level
-      unchanged_write_ratio_target: 0.0
-    rollout_gates:
-      dry_run_completed: true
-      canary_completed: false
-      canary_row_limit: 1
-      healthy_cycles_required: 2
-      healthy_cycles_completed: 0
-      re_enable_approval: false
+    safety_profile:
+      category: agent_operations
+      risk_level: medium
+      description: >
+        Event-driven operator create/rotate/revoke operations and seller page
+        resolve/evidence authorization for seven-day ticket share links. The
+        ConoHa viewer calls an authenticated ticketing Worker bridge and has no
+        direct database credentials.
+      affected_tables:
+        - tickets
+        - ticket_products
+        - ticket_attachments
+        - platform_accounts
+        - ticket_share_tokens
+        - ticket_share_attachments
+      expected_volume_rows_min: 1
+      expected_volume_rows_target: 2
+      expected_volume_rows_max: 52
+      expected_request_count_min: 1
+      expected_request_count_max: 6
+      expected_runtime_seconds_max: 10
+      concurrency_max: 1
+      statement_timeout_ms: 5000
+      max_retries: 0
+      retry_strategy: none
+      batch_size_min: 1
+      batch_size_max: 50
+      source_repo: retailpulses/ticket-handling
+      deployed_from: ""
+      request_budget:
+        max_requests_per_invocation: 6
+        max_requests_per_1000_input_rows: 6000
+        bulk_fetch_strategy: none
+      change_aware_writes:
+        enabled: true
+        freshness_strategy: run_level
+        unchanged_write_ratio_target: 0.0
+      rollout_gates:
+        dry_run_completed: true
+        canary_completed: false
+        canary_row_limit: 1
+        healthy_cycles_required: 2
+        healthy_cycles_completed: 0
+        re_enable_approval: false
+      monitoring:
+        warning_thresholds:
+          connections_pct: 80
+          cpu_pct: 70
+          timeout_rate_pct: 5
+          retry_budget_pct: 30
+        critical_thresholds:
+          connections_pct: 95
+          cpu_pct: 90
+          timeout_rate_pct: 15
+          retry_budget_pct: 50
+      incident_ref: ""
+      rollback: "Deploy rollback to remove ENABLE_TICKET_SHARES flag"
     approved_by: "retailpulses/ticket-handling#151"
     approved_at: "2026-07-16"
     last_reviewed: "2026-07-16"
-    incident_ref: ""
     notes: >
       Migration replay and functional lifecycle tests passed in isolated local
       PostgreSQL. `none` bulk-fetch strategy is intentional because each request
@@ -131,275 +172,234 @@ workloads:
       but the Worker performs no automatic retry. Production remains pending
       until the reviewed ticket-handling commit is recorded in deployed_from,
       schema backup/preflight gates pass, and the ConoHa canary completes.
-    monitoring:
-      warning_thresholds:
-        connections_pct: 80
-        cpu_pct: 70
-        timeout_rate_pct: 5
-        retry_budget_pct: 30
-      critical_thresholds:
-        connections_pct: 95
-        cpu_pct: 90
-        timeout_rate_pct: 15
-        retry_budget_pct: 50
 
-  # ── Example / Template Entry ───────────────────────────────────────────
-  # This entry is a documented example. It does not represent a real workload.
-  # Replace fields with actual workload data when registering a real workload.
-  example_nightly_cleanup:
-    category: scheduled_jobs
-    risk_level: medium
+  # ── Example / Template Entry (standard, low-risk) ─────────────────────
+  example_low_risk_read:
+    owner_repo: retailpulses/example-repo
     domain: example
-    description: "EXAMPLE — Replace with real workload description"
-    trigger: "0 3 * * *"
-    affected_tables:
-      - example_logs
-      - example_sessions
-    expected_volume_rows_min: 10000
-    expected_volume_rows_max: 50000
-    expected_request_count_min: 50
-    expected_request_count_max: 200
-    expected_runtime_seconds_max: 300
-    concurrency_max: 2
-    statement_timeout_ms: 30000
-    max_retries: 3
-    retry_strategy: exponential_backoff_with_jitter
-    batch_size_min: 500
-    batch_size_max: 1000
-    kill_switch:
-      method: worker_cancel
-      documented_at: "Issue or work brief URL"
-    monitoring:
-      warning_thresholds:
-        connections_pct: 80
-        cpu_pct: 70
-        timeout_rate_pct: 5
-        retry_budget_pct: 30
-      critical_thresholds:
-        connections_pct: 95
-        cpu_pct: 90
-        timeout_rate_pct: 15
-        retry_budget_pct: 50
-    approved_by: "EXAMPLE — infra authority"
-    approved_at: "2026-01-01"
-    last_reviewed: "2026-01-01"
-    notes: "EXAMPLE workload entry. Replace all fields before registering a real workload."
-
-  # ── Example / Sync Entry ───────────────────────────────────────────────
-  example_external_sync:
-    category: syncs
-    risk_level: high
-    domain: example
-    description: "EXAMPLE — Replace with real workload description"
-    trigger: "0 */6 * * *"
-    affected_tables:
-      - example_products
-      - example_inventory
-    expected_volume_rows_min: 50000
-    expected_volume_rows_max: 200000
-    expected_request_count_min: 200
-    expected_request_count_max: 800
-    expected_runtime_seconds_max: 1200
-    concurrency_max: 3
-    statement_timeout_ms: 60000
-    max_retries: 3
-    retry_strategy: exponential_backoff_with_jitter
-    batch_size_min: 1000
-    batch_size_max: 5000
+    mode: read_only
+    access_path: postgrest
+    credential_class: read_only
+    trigger: manual
+    status: pending_approval
     kill_switch:
       method: deploy_rollback
-      documented_at: "Issue or work brief URL"
-    monitoring:
-      warning_thresholds:
-        connections_pct: 80
-        cpu_pct: 70
-        timeout_rate_pct: 5
-        retry_budget_pct: 30
-      critical_thresholds:
-        connections_pct: 95
-        cpu_pct: 90
-        timeout_rate_pct: 15
-        retry_budget_pct: 50
-    approved_by: "EXAMPLE — domain owner + infra authority"
-    approved_at: "2026-01-01"
-    last_reviewed: "2026-01-01"
-    notes: "EXAMPLE workload entry. High-risk sync workloads require both domain owner and infra authority approval."
+      identifier: EXAMPLE_READ_ENABLED
+    notes: >
+      EXAMPLE — Replace with real workload data. Low-risk read-only workloads
+      require only the standard declaration fields. No safety_profile needed.
+
+  # ── Example / Template Entry (extended, high-risk) ────────────────────
+  example_high_risk_sync:
+    owner_repo: retailpulses/example-repo
+    domain: example
+    mode: write
+    access_path: postgrest
+    credential_class: write_scoped
+    trigger: "0 */6 * * *"
+    status: pending_approval
+    kill_switch:
+      method: deploy_rollback
+      identifier: EXAMPLE_SYNC_ENABLED
+    safety_profile:
+      category: syncs
+      risk_level: high
+      description: "EXAMPLE — Replace with real workload description"
+      affected_tables:
+        - example_products
+        - example_inventory
+      expected_volume_rows_min: 50000
+      expected_volume_rows_max: 200000
+      expected_request_count_min: 200
+      expected_request_count_max: 800
+      expected_runtime_seconds_max: 1200
+      concurrency_max: 3
+      statement_timeout_ms: 60000
+      max_retries: 3
+      retry_strategy: exponential_backoff_with_jitter
+      batch_size_min: 1000
+      batch_size_max: 5000
+      source_repo: retailpulses/example-repo
+      deployed_from: ""
+      request_budget:
+        max_requests_per_invocation: 800
+        max_requests_per_1000_input_rows: 160
+        bulk_fetch_strategy: bulk-endpoint
+      change_aware_writes:
+        enabled: true
+        freshness_strategy: run_level
+        unchanged_write_ratio_target: 0.0
+      rollout_gates:
+        dry_run_completed: false
+        canary_completed: false
+        canary_row_limit: 100
+        healthy_cycles_required: 2
+        healthy_cycles_completed: 0
+        re_enable_approval: false
+      monitoring:
+        warning_thresholds:
+          connections_pct: 80
+          cpu_pct: 70
+          timeout_rate_pct: 5
+          retry_budget_pct: 30
+        critical_thresholds:
+          connections_pct: 95
+          cpu_pct: 90
+          timeout_rate_pct: 15
+          retry_budget_pct: 50
+      incident_ref: ""
+      rollback: "Deploy rollback"
+    notes: >
+      EXAMPLE — Replace with real workload data. High-risk sync workloads
+      require the extended safety_profile with all rollout gates, monitoring
+      thresholds, and change-aware write configuration.
 
   # ── CatalogSync Product Mirror ─────────────────────────────────────────
   catalogsync_product_mirror:
     owner_repo: retailpulses/CatalogSync
-    category: syncs
-    risk_level: high
     domain: product_catalog
-    status: disabled
-    description: >
-      Product catalog mirror — reads product data from RPagentOS internal
-      Worker API and writes to catalog_sync domain tables. Disabled due to
-      resource-exhaustion incident #23.
-    trigger: manual  # timer disabled; re-enable requires explicit approval
-    affected_tables:
-      - products
-      - product_variants
-      - platform_listings
-    expected_volume_rows_min: 5570
-    expected_volume_rows_target: 5570
-    expected_volume_rows_max: 5570
-    expected_request_count_min: 10
-    expected_request_count_max: 100
-    expected_runtime_seconds_max: 600
-    concurrency_max: 2
-    statement_timeout_ms: 30000
-    max_retries: 3
-    retry_strategy: exponential_backoff_with_jitter
-    batch_size_min: 100
-    batch_size_max: 250
+    mode: write
     access_path: internal_api
-    source_repo: retailpulses/CatalogSync
-    deployed_from: ""  # must be populated when re-enabled
+    credential_class: write_scoped
+    trigger: manual
+    status: disabled
     kill_switch:
       method: worker_cancel
-      documented_at: "retailpulses/CatalogSync#23"
       identifier: catalogsync.timer
-    request_budget:
-      max_requests_per_invocation: 100
-      max_requests_per_1000_input_rows: 18
-      bulk_fetch_strategy: bulk-endpoint
-    change_aware_writes:
-      enabled: true
-      freshness_strategy: run_level
-      unchanged_write_ratio_target: 0.0
-    rollout_gates:
-      dry_run_completed: false
-      canary_completed: false
-      canary_row_limit: 100
-      healthy_cycles_required: 2
-      healthy_cycles_completed: 0
-      re_enable_approval: true
+    safety_profile:
+      category: syncs
+      risk_level: high
+      description: >
+        Product catalog mirror — reads product data from RPagentOS and writes
+        to product_catalog domain tables. Disabled due to resource-exhaustion
+        incident #23.
+      affected_tables:
+        - products
+        - product_variants
+        - platform_listings
+      expected_volume_rows_min: 5570
+      expected_volume_rows_target: 5570
+      expected_volume_rows_max: 5570
+      expected_request_count_min: 10
+      expected_request_count_max: 100
+      expected_runtime_seconds_max: 600
+      concurrency_max: 2
+      statement_timeout_ms: 30000
+      max_retries: 3
+      retry_strategy: exponential_backoff_with_jitter
+      batch_size_min: 100
+      batch_size_max: 250
+      source_repo: retailpulses/CatalogSync
+      deployed_from: ""
+      request_budget:
+        max_requests_per_invocation: 100
+        max_requests_per_1000_input_rows: 18
+        bulk_fetch_strategy: bulk-endpoint
+      change_aware_writes:
+        enabled: true
+        freshness_strategy: run_level
+        unchanged_write_ratio_target: 0.0
+      rollout_gates:
+        dry_run_completed: false
+        canary_completed: false
+        canary_row_limit: 100
+        healthy_cycles_required: 2
+        healthy_cycles_completed: 0
+        re_enable_approval: true
+      monitoring:
+        warning_thresholds:
+          connections_pct: 80
+          cpu_pct: 70
+          timeout_rate_pct: 5
+          retry_budget_pct: 30
+        critical_thresholds:
+          connections_pct: 95
+          cpu_pct: 90
+          timeout_rate_pct: 15
+          retry_budget_pct: 50
+      incident_ref: "retailpulses/CatalogSync#23"
+      rollback: "Worker cancel + deploy rollback; see DATABASE_INCIDENT_RESPONSE.md"
     approved_by: "Requires explicit re-approval after incident #23 remediation"
     approved_at: ""
     last_reviewed: ""
-    incident_ref: "retailpulses/CatalogSync#23"
     notes: >
       Disabled after resource-exhaustion incident #23. Re-enable requires:
       (1) explicit infra authority approval,
-      (2) access path verified as internal_api (not direct database),
+      (2) access path verified and declared,
       (3) batch size bounded to 100-250, request budget to tens/low hundreds,
       (4) change-aware writes with run-level freshness,
       (5) all rollout gates completed in sequence,
       (6) deployed from a reviewed Git commit (no untracked VPS source).
-    monitoring:
-      warning_thresholds:
-        connections_pct: 80
-        cpu_pct: 70
-        timeout_rate_pct: 5
-        retry_budget_pct: 30
-      critical_thresholds:
-        connections_pct: 95
-        cpu_pct: 90
-        timeout_rate_pct: 15
-        retry_budget_pct: 50
 
-  # ── CatalogSync Amazon/Rakuten marketplace projection API ──────────────
+  # ── CatalogSync Marketplace Projection API ────────────────────────────
   catalogsync_marketplace_projection_api_read:
     owner_repo: retailpulses/CatalogSync
-    category: scheduled_jobs
-    risk_level: medium
     domain: product_catalog
-    status: pending_approval
-    description: >
-      Read-only PostgREST workload used by the CatalogSync Cloudflare Worker
-      to serve authenticated Amazon and Rakuten marketplace projections to VPS
-      consumers. The Worker may read only the RPagentOS-owned
-      catalogsync_marketplace_projection_v1 view.
-    trigger: "manual canary; schedule enabled only after rollout gates"
-    affected_tables:
-      - catalogsync_marketplace_projection_v1
-    expected_volume_rows_min: 1
-    expected_volume_rows_target: 2500
-    expected_volume_rows_max: 10000
-    expected_request_count_min: 1
-    expected_request_count_max: 50
-    expected_runtime_seconds_max: 120
-    concurrency_max: 4
-    statement_timeout_ms: 10000
-    max_retries: 2
-    retry_strategy: exponential_backoff_with_jitter
-    batch_size_min: 1
-    batch_size_max: 200
+    mode: read_only
     access_path: postgrest
-    source_repo: retailpulses/CatalogSync
-    deployed_from: ""
-    runtime_host: "Cloudflare Worker giga-catalog-sync-production"
-    credential_owner: "retailpulses/RPagentOS product_catalog domain owner"
+    credential_class: read_only
+    trigger: "manual canary; schedule enabled only after rollout gates"
+    status: pending_approval
+    kill_switch:
+      method: deploy_rollback
+      identifier: CATALOGSYNC_MARKETPLACE_PROJECTION_ENABLED
+    safety_profile:
+      category: scheduled_jobs
+      risk_level: medium
+      description: >
+        Read-only PostgREST workload used by the CatalogSync Cloudflare Worker
+        to serve authenticated Amazon and Rakuten marketplace projections to VPS
+        consumers. The Worker may read only the RPagentOS-owned
+        catalogsync_marketplace_projection_v1 view.
+      affected_tables:
+        - catalogsync_marketplace_projection_v1
+      expected_volume_rows_min: 1
+      expected_volume_rows_target: 2500
+      expected_volume_rows_max: 10000
+      expected_request_count_min: 1
+      expected_request_count_max: 50
+      expected_runtime_seconds_max: 120
+      concurrency_max: 4
+      statement_timeout_ms: 10000
+      max_retries: 2
+      retry_strategy: exponential_backoff_with_jitter
+      batch_size_min: 1
+      batch_size_max: 200
+      source_repo: retailpulses/CatalogSync
+      deployed_from: ""
+      request_budget:
+        max_requests_per_invocation: 50
+        max_requests_per_1000_input_rows: 20
+        bulk_fetch_strategy: pagination-cursor
+      change_aware_writes:
+        enabled: false
+        freshness_strategy: run_level
+        unchanged_write_ratio_target: 0.0
+      rollout_gates:
+        dry_run_completed: false
+        canary_completed: false
+        canary_row_limit: 1
+        healthy_cycles_required: 2
+        healthy_cycles_completed: 0
+        re_enable_approval: false
+      monitoring:
+        warning_thresholds:
+          connections_pct: 80
+          cpu_pct: 70
+          timeout_rate_pct: 5
+          retry_budget_pct: 30
+        critical_thresholds:
+          connections_pct: 95
+          cpu_pct: 90
+          timeout_rate_pct: 15
+          retry_budget_pct: 50
+      incident_ref: ""
+      rollback: "Deploy rollback to disable CATALOGSYNC_MARKETPLACE_PROJECTION_ENABLED"
     credential_contract:
       role: catalogsync_marketplace_reader
       service_role_forbidden: true
       generic_anon_forbidden: true
       operation_mode: read_only
-      allowed_resources:
-        catalogsync_marketplace_projection_v1:
-          - projection_row_id
-          - product_variant_id
-          - item_code
-          - product_status
-          - source_available_qty
-          - owned_qty
-          - presale_qty
-          - restock_date
-          - inventory_status
-          - sync_status
-          - last_sync_success_at
-          - inventory_updated_at
-          - platform
-          - shop_code
-          - account_id
-          - marketplace_id
-          - shop_id
-          - account_status
-          - listing_id
-          - external_listing_id
-          - manage_number
-          - listing_status
-          - listing_updated_at
-          - listing_sku_id
-          - seller_sku
-          - sku_code
-          - marketplace_variant_id
-          - sku_status
-          - mapping_updated_at
-          - match_method
-    kill_switch:
-      method: deploy_rollback
-      documented_at: "retailpulses/CatalogSync#35"
-      identifier: CATALOGSYNC_MARKETPLACE_PROJECTION_ENABLED
-    request_budget:
-      max_requests_per_invocation: 50
-      max_requests_per_1000_input_rows: 20
-      bulk_fetch_strategy: pagination-cursor
-    change_aware_writes:
-      enabled: false
-      freshness_strategy: run_level
-      unchanged_write_ratio_target: 0.0
-    rollout_gates:
-      dry_run_completed: false
-      canary_completed: false
-      canary_row_limit: 1
-      healthy_cycles_required: 2
-      healthy_cycles_completed: 0
-      re_enable_approval: false
-    expected_runtime_seconds: 120
-    incident_ref: ""
-    monitoring:
-      warning_thresholds:
-        connections_pct: 80
-        cpu_pct: 70
-        timeout_rate_pct: 5
-        retry_budget_pct: 30
-      critical_thresholds:
-        connections_pct: 95
-        cpu_pct: 90
-        timeout_rate_pct: 15
-        retry_budget_pct: 50
     approved_by: "Pending RPagentOS projection PR and CatalogSync#35 merge"
     approved_at: ""
     last_reviewed: "2026-07-17"
@@ -409,45 +409,78 @@ workloads:
       RPagentOS-owned projection through this declared PostgREST workload. No
       automatic fallback, database writes, base-table grants, schema privilege,
       or service-role credential. Production activation requires the owner
-      migration, dedicated role JWT, unauthorized/authenticated endpoint smoke,
-      SKU-scoped Amazon and Rakuten dry-runs, and deployed_from evidence.
+      migration, dedicated role JWT, endpoint smoke tests, SKU-scoped dry-runs,
+      and deployed_from evidence.
 
   # ── CatalogSync Mercari shop4 read projection ─────────────────────────
   catalogsync_mercari_shop4_read:
     owner_repo: retailpulses/CatalogSync
-    category: scheduled_jobs
-    risk_level: medium
     domain: product_catalog
-    status: pending_approval
-    description: >
-      Read-only Supabase projection used by the fixed-IP CatalogSync VPS to
-      reconcile Mercari shop4 inventory, presale title prefix, and shipping
-      lead time. It does not write Supabase and does not cover shops 1-3,
-      Amazon, Rakuten, dashboards, or archival.
-    trigger: "*/10 * * * * full; * * * * * bounded priority"
-    affected_tables:
-      - platform_accounts
-      - platform_listings
-      - platform_listing_skus
-      - product_variants
-      - product_commercials
-    expected_volume_rows_min: 5000
-    expected_volume_rows_target: 22000
-    expected_volume_rows_max: 25000
-    expected_request_count_min: 10
-    expected_request_count_max: 100
-    expected_runtime_seconds_max: 540
-    concurrency_max: 1
-    statement_timeout_ms: 20000
-    max_retries: 3
-    retry_strategy: exponential_backoff_with_jitter
-    batch_size_min: 1
-    batch_size_max: 500
+    mode: read_only
     access_path: postgrest
-    source_repo: retailpulses/CatalogSync
-    deployed_from: ""
-    runtime_host: "160.251.141.110"
-    credential_owner: "retailpulses/RPagentOS product_catalog domain owner"
+    credential_class: read_only
+    trigger: "*/10 * * * * full; * * * * * bounded priority"
+    status: pending_approval
+    kill_switch:
+      method: deploy_rollback
+      identifier: CATALOGSYNC_SHOP4_ENABLED
+    safety_profile:
+      category: scheduled_jobs
+      risk_level: medium
+      description: >
+        Read-only Supabase projection used by the CatalogSync VPS to reconcile
+        Mercari shop4 inventory, presale title prefix, and shipping lead time.
+        It does not write Supabase and does not cover shops 1-3, Amazon,
+        Rakuten, dashboards, or archival.
+      affected_tables:
+        - platform_accounts
+        - platform_listings
+        - platform_listing_skus
+        - product_variants
+        - product_commercials
+      expected_volume_rows_min: 5000
+      expected_volume_rows_target: 22000
+      expected_volume_rows_max: 25000
+      expected_request_count_min: 10
+      expected_request_count_max: 100
+      expected_runtime_seconds_max: 540
+      concurrency_max: 1
+      statement_timeout_ms: 20000
+      max_retries: 3
+      retry_strategy: exponential_backoff_with_jitter
+      batch_size_min: 1
+      batch_size_max: 500
+      source_repo: retailpulses/CatalogSync
+      deployed_from: ""
+      request_budget:
+        max_requests_per_invocation: 100
+        max_rows_per_invocation: 25000
+        max_requests_per_1000_input_rows: 5
+        bulk_fetch_strategy: pagination-cursor
+      change_aware_writes:
+        enabled: true
+        freshness_strategy: run_level
+        unchanged_write_ratio_target: 0.0
+      rollout_gates:
+        dry_run_completed: false
+        canary_completed: false
+        canary_row_limit: 5
+        healthy_cycles_required: 3
+        healthy_cycles_completed: 0
+        re_enable_approval: false
+      monitoring:
+        warning_thresholds:
+          connections_pct: 80
+          cpu_pct: 70
+          timeout_rate_pct: 5
+          retry_budget_pct: 30
+        critical_thresholds:
+          connections_pct: 95
+          cpu_pct: 90
+          timeout_rate_pct: 15
+          retry_budget_pct: 50
+      incident_ref: "retailpulses/CatalogSync#23"
+      rollback: "Deploy rollback to disable CATALOGSYNC_SHOP4_ENABLED"
     credential_contract:
       role: catalogsync_shop4_reader
       service_role_forbidden: true
@@ -455,107 +488,35 @@ workloads:
       rotation_days_max: 90
       storage: /root/mercari-sync/.env
       file_mode: "0600"
-    request_budget:
-      max_requests_per_invocation: 100
-      max_rows_per_invocation: 25000
-      max_requests_per_1000_input_rows: 5
-      bulk_fetch_strategy: pagination-cursor
-    mapping_strategy:
-      order:
-        - explicit_variant_id
-        - canonical_sku_code
-        - canonical_seller_sku
-      missing_or_ambiguous: fail_closed
-      shop_scope: shop4
-    change_aware_writes:
-      enabled: true
-      freshness_strategy: run_level
-      unchanged_write_ratio_target: 0.0
-      database_writes: false
-      marketplace_writes_only_on_diff: true
-    kill_switch:
-      method: deploy_rollback
-      documented_at: "retailpulses/CatalogSync#23"
-      identifier: CATALOGSYNC_SHOP4_ENABLED
-    rollout_gates:
-      dry_run_completed: false
-      canary_completed: false
-      canary_row_limit: 5
-      healthy_cycles_required: 3
-      healthy_cycles_completed: 0
-      mapping_dry_run_completed: false
-      full_apply_completed: false
     approved_by: ""
     approved_at:
     last_reviewed: "2026-07-16"
-    incident_ref: "retailpulses/CatalogSync#23"
     notes: >
       Owner approval is represented by the RPagentOS migration that provisions
       the column-limited read role and shop-isolation policies. The runtime
       token must never be a Supabase service-role credential. Production
-      Mercari access remains restricted to VPS 160.251.141.110.
-    monitoring:
-      warning_thresholds:
-        connections_pct: 80
-        cpu_pct: 70
-        timeout_rate_pct: 5
-        retry_budget_pct: 30
-      critical_thresholds:
-        connections_pct: 95
-        cpu_pct: 90
-        timeout_rate_pct: 15
-        retry_budget_pct: 50
+      Mercari access remains restricted to the declared VPS host.
+      Per-shop kill switches should be modeled in workload configuration rather
+      than duplicating the governance structure for each shop. When shops share
+      the same company owner, runtime, operator, data classification, and
+      permission level, prefer a parameterized/shared workload model.
 
   # ── Documentation for New Entries ────────────────────────────────────────
-#
-# Required fields for every real workload entry:
-#   workload_id                          — unique identifier (kebab-case, no "example_" prefix for real entries)
-#   owner_repo                           — GitHub owner/repo that owns this workload
-#   category                             — one of: imports, syncs, backfills, scheduled_jobs, agent_operations, maintenance, diagnostics
-#   risk_level                           — low, medium, high
-#   status                               — active, disabled, or pending_approval
-#   domain                               — must match a declared domain in DATABASE_OWNERSHIP.yaml
-#   description                          — human-readable explanation of what this workload does
-#   trigger                              — cron expression, "manual", "event_driven", or "on_deploy"
-#   affected_tables                      — list of tables touched (reads or writes)
-#   expected_volume_rows_min               — minimum estimated rows per invocation
-#   expected_volume_rows_max               — maximum estimated rows per invocation
-#   expected_request_count_min             — minimum estimated request count per invocation
-#   expected_request_count_max             — maximum estimated request count per invocation
-#   expected_runtime_seconds_max           — expected runtime ceiling in seconds
-#   concurrency_max                        — max concurrent database connections
-#   statement_timeout_ms                   — per-query timeout in ms
-#   max_retries                            — max retries per unit of work
-#   retry_strategy                         — exponential_backoff_with_jitter, fixed_delay, or none
-#   batch_size_min                         — min rows per INSERT/UPDATE/DELETE statement
-#   batch_size_max                         — max rows per INSERT/UPDATE/DELETE statement (must not exceed §13.3 limit)
-#   access_path                            — internal_api, supavisor, postgrest, or direct_postgres
-#   source_repo                            — GitHub repo containing the workload source code
-#   deployed_from                          — commit SHA or release tag (may be empty if disabled)
-#   kill_switch.method                     — one of: worker_cancel, dashboard_session_terminate, sql_terminate_backend, deploy_rollback
-#   kill_switch.documented_at              — URL or reference where the procedure is documented
-#   kill_switch.identifier                 — config key, cron name, or timer name that disables this workload
-#   request_budget.max_requests_per_invocation  — absolute ceiling per run
-#   request_budget.max_requests_per_1000_input_rows — requests per 1k input (must scale with input; formula must be documented)
-#   request_budget.bulk_fetch_strategy     — IN-clause-batch, bulk-endpoint, pagination-cursor, or none (none requires justification)
-#   change_aware_writes.enabled          — whether change detection is implemented
-#   change_aware_writes.freshness_strategy — run_level or per_row (per_row requires justification)
-#   change_aware_writes.unchanged_write_ratio_target — target max ratio (ratios above this trigger review)
-#   rollout_gates.dry_run_completed      — whether zero-write dry-run passed
-#   rollout_gates.canary_completed       — whether bounded live canary passed
-#   rollout_gates.canary_row_limit       — row limit used for canary
-#   rollout_gates.healthy_cycles_required — minimum healthy cycles before operational
-#   rollout_gates.healthy_cycles_completed — healthy cycles completed so far
-#   rollout_gates.re_enable_approval     — required if workload was disabled by incident
-#   incident_ref                         — GitHub issue URL or #number if previously disabled
-#   monitoring.warning_thresholds        — connections_pct, cpu_pct, timeout_rate_pct, retry_budget_pct
-#   monitoring.critical_thresholds       — connections_pct, cpu_pct, timeout_rate_pct, retry_budget_pct
-#   approved_by                          — who authorized (person, role, or Issue ref; may be explicit if disabled)
-#   approved_at                          — ISO date (may be empty if disabled/pending)
-#   last_reviewed                        — ISO date of last review
-#   notes                                — any additional context, dependencies, known limitations
-#
-# Optional fields:
-#   depends_on          — list of workload_ids this workload depends on
-#   excluded_windows    — cron expressions or time windows when this workload must NOT run
-#   rollback_procedure  — URL or description of how to undo this workload's effects
+  #
+  # Standard fields (required for every workload):
+  #   workload_id, owner_repo, domain, mode, access_path,
+  #   credential_class, trigger, status, kill_switch
+  #
+  # Extended safety_profile (required when: mode=write, high volume,
+  #   frequent cron, privileged credential, destructive ops, large blast
+  #   radius, or prior related incident):
+  #   category, risk_level, description, affected_tables,
+  #   expected_volume_rows_*, expected_request_count_*,
+  #   expected_runtime_seconds_max, concurrency_max, statement_timeout_ms,
+  #   max_retries, retry_strategy, batch_size_*, source_repo, deployed_from,
+  #   request_budget, change_aware_writes, rollout_gates, monitoring,
+  #   incident_ref, rollback
+  #
+  # Optional fields for any entry:
+  #   depends_on, excluded_windows, credential_contract,
+  #   approved_by, approved_at, last_reviewed, notes

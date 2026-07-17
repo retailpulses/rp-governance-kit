@@ -118,6 +118,7 @@ domains:
         - product_mercari_qty_vw
         - product_presale_qty_vw
         - product_rakuten_pricing_vw
+        - catalogsync_marketplace_projection_v1
       functions:
         - set_updated_at
         - parse_giga_arrival_date
@@ -134,8 +135,13 @@ domains:
       read-only PostgREST from VPS 160.251.141.110 with a dedicated,
       owner-provisioned least-privilege role. It may not use service_role,
       write database rows, access another shop, or create schema objects.
-      All other CatalogSync reads and writes continue to use RPagentOS-owned
-      internal API contracts.
+      The separately registered catalogsync_marketplace_projection_api_read
+      workload may use read-only PostgREST from the CatalogSync Cloudflare
+      Worker through the owner-managed catalogsync_marketplace_projection_v1
+      view and dedicated catalogsync_marketplace_reader role. The CatalogSync
+      marketplace API remains CatalogSync-owned. Other access paths require
+      their own reviewed declaration; schema and migration ownership remain
+      with RPagentOS.
 
   # ── Agent OS ──────────────────────────────────────────────
   agent_os:
@@ -292,15 +298,16 @@ domains:
       functions: []
       storage_buckets: []
     notes: >
-      CatalogSync is a database consumer without migration ownership. It reads
-      product_catalog domain tables through an internal Worker API (not direct
-      Supabase client access). No supabase/ directory. No migration checks needed.
+      CatalogSync is a database consumer without migration ownership. Runtime
+      access may use separately declared internal_api or read-only PostgREST
+      workloads; access-path approval does not transfer schema ownership. No
+      supabase/ directory. No migration checks needed.
       INCIDENT #23 CONFIRMED BOUNDARY: No migrations, no RPC functions, no new
       tables created by CatalogSync. Any future sync-state tables must be owned
       by the product_catalog domain (retailpulses/RPagentOS) and coordinated
       with CatalogSync as a declared consumer. CatalogSync's role is a runtime
-      consumer that syncs data through the approved internal_api access path.
-      Re-enable requires explicit approval, internal_api access path,
+      consumer that syncs data through approved, least-privilege access paths.
+      Re-enable of the disabled product mirror requires explicit approval and its internal_api access path,
       batch size bounded 100-250, request budget tens/low hundreds, change-aware
       writes with run-level freshness, and rollout gates per
       DATABASE_GOVERNANCE.md §13.9-13.14.

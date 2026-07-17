@@ -278,6 +278,8 @@ jobs:
           fetch-depth: 0
 
       - name: Check migration ownership matches repository
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
         run: |
           BASE="${{ github.event.pull_request.base.sha }}"
           HEAD="${{ github.event.pull_request.head.sha }}"
@@ -312,7 +314,6 @@ jobs:
                   HAS_EXCEPTION=true
                 fi
 
-                PR_BODY="${{ github.event.pull_request.body }}"
                 HAS_ISSUE_REF=$(echo "$PR_BODY" | grep -cE '(Refs|Closes|Fixes|Resolves)[[:space:]]+#[0-9]+' || true)
 
                 if [[ "$HAS_EXCEPTION" == false ]]; then
@@ -344,12 +345,13 @@ jobs:
 
       - name: Check runtime database impact documentation
         if: always()
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
         run: |
           BASE="${{ github.event.pull_request.base.sha }}"
           HEAD="${{ github.event.pull_request.head.sha }}"
 
           CHANGED=$(git diff --name-only "$BASE"..."$HEAD" || true)
-          PR_BODY="${{ github.event.pull_request.body }}"
 
           if [[ -z "$CHANGED" ]]; then
             echo "No changed files: OK"
@@ -481,12 +483,13 @@ jobs:
           fetch-depth: 0
 
       - name: Detect N+1 lookup patterns in changed code
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
         run: |
           BASE="${{ github.event.pull_request.base.sha }}"
           HEAD="${{ github.event.pull_request.head.sha }}"
 
           CHANGED=$(git diff --name-only "$BASE"..."$HEAD" || true)
-          PR_BODY="${{ github.event.pull_request.body }}"
 
           if [[ -z "$CHANGED" ]]; then
             echo "No changed files: OK"
@@ -547,12 +550,13 @@ jobs:
           fetch-depth: 0
 
       - name: Detect periodic scan+write patterns without change detection
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
         run: |
           BASE="${{ github.event.pull_request.base.sha }}"
           HEAD="${{ github.event.pull_request.head.sha }}"
 
           CHANGED=$(git diff --name-only "$BASE"..."$HEAD" || true)
-          PR_BODY="${{ github.event.pull_request.body }}"
 
           if [[ -z "$CHANGED" ]]; then
             echo "No changed files: OK"
@@ -627,12 +631,13 @@ jobs:
           fetch-depth: 0
 
       - name: Check database access path against ownership registry
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
         run: |
           BASE="${{ github.event.pull_request.base.sha }}"
           HEAD="${{ github.event.pull_request.head.sha }}"
 
           CHANGED=$(git diff --name-only "$BASE"..."$HEAD" || true)
-          PR_BODY="${{ github.event.pull_request.body }}"
           REPO_NAME="${{ github.repository }}"
 
           if [[ -z "$CHANGED" ]]; then

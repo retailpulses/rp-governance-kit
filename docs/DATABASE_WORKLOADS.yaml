@@ -299,6 +299,119 @@ workloads:
         timeout_rate_pct: 15
         retry_budget_pct: 50
 
+  # ── CatalogSync Amazon/Rakuten marketplace projection API ──────────────
+  catalogsync_marketplace_projection_api_read:
+    owner_repo: retailpulses/CatalogSync
+    category: scheduled_jobs
+    risk_level: medium
+    domain: product_catalog
+    status: pending_approval
+    description: >
+      Read-only PostgREST workload used by the CatalogSync Cloudflare Worker
+      to serve authenticated Amazon and Rakuten marketplace projections to VPS
+      consumers. The Worker may read only the RPagentOS-owned
+      catalogsync_marketplace_projection_v1 view.
+    trigger: "manual canary; schedule enabled only after rollout gates"
+    affected_tables:
+      - catalogsync_marketplace_projection_v1
+    expected_volume_rows_min: 1
+    expected_volume_rows_target: 2500
+    expected_volume_rows_max: 10000
+    expected_request_count_min: 1
+    expected_request_count_max: 50
+    expected_runtime_seconds_max: 120
+    concurrency_max: 4
+    statement_timeout_ms: 10000
+    max_retries: 2
+    retry_strategy: exponential_backoff_with_jitter
+    batch_size_min: 1
+    batch_size_max: 200
+    access_path: postgrest
+    source_repo: retailpulses/CatalogSync
+    deployed_from: ""
+    runtime_host: "Cloudflare Worker giga-catalog-sync-production"
+    credential_owner: "retailpulses/RPagentOS product_catalog domain owner"
+    credential_contract:
+      role: catalogsync_marketplace_reader
+      service_role_forbidden: true
+      generic_anon_forbidden: true
+      operation_mode: read_only
+      allowed_resources:
+        catalogsync_marketplace_projection_v1:
+          - projection_row_id
+          - product_variant_id
+          - item_code
+          - product_status
+          - source_available_qty
+          - owned_qty
+          - presale_qty
+          - restock_date
+          - inventory_status
+          - sync_status
+          - last_sync_success_at
+          - inventory_updated_at
+          - platform
+          - shop_code
+          - account_id
+          - marketplace_id
+          - shop_id
+          - account_status
+          - listing_id
+          - external_listing_id
+          - manage_number
+          - listing_status
+          - listing_updated_at
+          - listing_sku_id
+          - seller_sku
+          - sku_code
+          - marketplace_variant_id
+          - sku_status
+          - mapping_updated_at
+          - match_method
+    kill_switch:
+      method: deploy_rollback
+      documented_at: "retailpulses/CatalogSync#35"
+      identifier: CATALOGSYNC_MARKETPLACE_PROJECTION_ENABLED
+    request_budget:
+      max_requests_per_invocation: 50
+      max_requests_per_1000_input_rows: 20
+      bulk_fetch_strategy: pagination-cursor
+    change_aware_writes:
+      enabled: false
+      freshness_strategy: run_level
+      unchanged_write_ratio_target: 0.0
+    rollout_gates:
+      dry_run_completed: false
+      canary_completed: false
+      canary_row_limit: 1
+      healthy_cycles_required: 2
+      healthy_cycles_completed: 0
+      re_enable_approval: false
+    expected_runtime_seconds: 120
+    incident_ref: ""
+    monitoring:
+      warning_thresholds:
+        connections_pct: 80
+        cpu_pct: 70
+        timeout_rate_pct: 5
+        retry_budget_pct: 30
+      critical_thresholds:
+        connections_pct: 95
+        cpu_pct: 90
+        timeout_rate_pct: 15
+        retry_budget_pct: 50
+    approved_by: "Pending RPagentOS projection PR and CatalogSync#35 merge"
+    approved_at: ""
+    last_reviewed: "2026-07-17"
+    notes: >
+      Two-hop architecture: VPS consumers call the CatalogSync-owned
+      authenticated internal API; the CatalogSync Worker separately reads the
+      RPagentOS-owned projection through this declared PostgREST workload. No
+      automatic fallback, database writes, base-table grants, schema privilege,
+      or service-role credential. Production activation requires the owner
+      migration, dedicated role JWT, unauthorized/authenticated endpoint smoke,
+      SKU-scoped Amazon and Rakuten dry-runs, and deployed_from evidence.
+
   # ── CatalogSync Mercari shop4 read projection ─────────────────────────
   catalogsync_mercari_shop4_read:
     owner_repo: retailpulses/CatalogSync

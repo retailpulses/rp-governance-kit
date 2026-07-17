@@ -482,7 +482,7 @@ Every workload must declare and follow an approved database access path. The gov
 
 - A consumer repository may use any explicitly approved server-side access path, including PostgREST, Supabase client, RPC, Supavisor, direct Postgres, or an internal API, provided the access is:
   1. **Least-privilege** — credential scope matches the workload's declared read/write capability.
-  2. **Declared** — the access path is recorded in the workload entry and consistent with the consumer's permitted access classes in `DATABASE_OWNERSHIP.yaml`.
+  2. **Declared** — the access path is recorded in the workload entry and consistent with the consumer's permitted access classes in `DATABASE_ACCESS_POLICY.yaml`.
   3. **Observable** — where the workload's risk profile requires monitoring, the access path supports it.
   4. **Capability-consistent** — read-only workloads use read-only credentials; write workloads use write-scoped credentials.
 - Owner repositories may use any path appropriate to their operation type.
@@ -622,7 +622,7 @@ See `docs/DATABASE_INCIDENT_RESPONSE.md` for resource-exhaustion, outage, and re
 
 - `docs/DATABASE_OWNERSHIP.yaml` — machine-readable domain ownership registry (who owns what)
 - `docs/DATABASE_ACCESS_POLICY.yaml` — machine-readable access policy (what paths and credentials are permitted)
-- `docs/DATABASE_CAPABILITIES.yaml` — machine-readable capability registry (read/write/schema_change per repo per domain)
+- `docs/DATABASE_CAPABILITIES.yaml` — machine-readable capability registry (domain-first: what each consumer may do with each domain)
 - `docs/DATABASE_WORKLOADS.yaml` — machine-readable workload registry
 - `docs/DATABASE_INCIDENT_RESPONSE.md` — incident response playbook
 - `docs/16_DATABASE_GOVERNANCE.md` (repo-local) — installed reference pointing to this canonical policy

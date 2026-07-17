@@ -101,10 +101,14 @@ The `access-path-enforcement` job no longer requires `internal_api` for consumer
 | File | Answers |
 |------|---------|
 | `DATABASE_OWNERSHIP.yaml` (v5) | Who owns what? Consumers are simple strings. |
-| `DATABASE_ACCESS_POLICY.yaml` (v1) | What access paths and credential classes are permitted per consumer? |
-| `DATABASE_CAPABILITIES.yaml` (v1) | What can each repo do with each domain (read/write/schema_change)? |
+| `DATABASE_ACCESS_POLICY.yaml` (v1) | What access classes (postgrest, internal_api, etc.) and credential classes are permitted per consumer? |
+| `DATABASE_CAPABILITIES.yaml` (v2) | Domain-first: what can each consumer do with each domain (read/write/schema_change)? |
 
 This separation scales better: ownership changes rarely, access policy changes when transports or credentials change, and capability changes when repos gain or lose permissions. Each file can be reviewed and versioned independently.
+
+**DATABASE_CAPABILITIES.yaml** is organized domain-first (e.g., `product_catalog → consumers → CatalogSync`) so the domain owner can immediately see every consumer and their capabilities without searching the whole file.
+
+**DATABASE_ACCESS_POLICY.yaml** contains only access **classes** (postgrest, internal_api, supavisor, direct_postgres), not deployment instances. Specific roles, views, JWTs, IP addresses, and timeout values belong in workload configuration or deployment configuration, not in access policy.
 
 ### 10. Governance principle added
 

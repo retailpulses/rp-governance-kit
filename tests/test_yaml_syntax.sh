@@ -277,21 +277,56 @@ if [[ -f "$CAPABILITIES" ]]; then
     fail "DATABASE_CAPABILITIES.yaml: Missing 'capabilities:' section"
   fi
 
-  # Key repos should be declared
-  for REPO in retailpulses/RPagentOS retailpulses/CatalogSync retailpulses/ticket-handling retailpulses/OrderMgmt; do
-    if grep -q "  $REPO:" "$CAPABILITIES"; then
-      pass "DATABASE_CAPABILITIES.yaml: '$REPO' declared"
+  # Domain-first structure (v2): domains are top-level keys under capabilities
+  # Each domain must have owner and consumers fields
+  for DOMAIN in product_catalog ticketing agent_os task_management project_management listing_intelligence listing_quality order_management catalog_sync; do
+    if grep -q "  $DOMAIN:" "$CAPABILITIES"; then
+      pass "DATABASE_CAPABILITIES.yaml: domain '$DOMAIN' declared"
     else
-      warn "DATABASE_CAPABILITIES.yaml: '$REPO' not found"
+      warn "DATABASE_CAPABILITIES.yaml: domain '$DOMAIN' not found"
     fi
   done
 
-  # Capability fields should exist
+  # Each domain should have an owner field
+  DOMAIN_OWNERS=$(grep -c 'owner:' "$CAPABILITIES" || true)
+  if [[ "$DOMAIN_OWNERS" -ge 1 ]]; then
+    pass "DATABASE_CAPABILITIES.yaml: owner field present ($DOMAIN_OWNERS domains)"
+  else
+    fail "DATABASE_CAPABILITIES.yaml: missing owner fields"
+  fi
+
+  # Each domain should have a consumers section
+  if grep -q 'consumers:' "$CAPABILITIES"; then
+    pass "DATABASE_CAPABILITIES.yaml: Has 'consumers:' sections"
+  else
+    fail "DATABASE_CAPABILITIES.yaml: Missing 'consumers:' sections"
+  fi
+
+  # Consumer entries must have capability fields
   if grep -q 'read:' "$CAPABILITIES" && grep -q 'write:' "$CAPABILITIES" && grep -q 'schema_change:' "$CAPABILITIES"; then
     pass "DATABASE_CAPABILITIES.yaml: Has read/write/schema_change capability fields"
   else
     fail "DATABASE_CAPABILITIES.yaml: Missing capability fields"
   fi
+
+  # Key repos should appear as consumers under their respective domains
+  if grep -A20 'product_catalog:' "$CAPABILITIES" | grep -q 'retailpulses/CatalogSync'; then
+    pass "DATABASE_CAPABILITIES.yaml: CatalogSync listed as consumer of product_catalog"
+  else
+    warn "DATABASE_CAPABILITIES.yaml: CatalogSync not found under product_catalog"
+  fi
+
+  if grep -A20 'product_catalog:' "$CAPABILITIES" | grep -q 'retailpulses/ticket-handling'; then
+    pass "DATABASE_CAPABILITIES.yaml: ticket-handling listed as consumer of product_catalog"
+  else
+    warn "DATABASE_CAPABILITIES.yaml: ticket-handling not found under product_catalog"
+  fi
+
+  if grep -A10 'ticketing:' "$CAPABILITIES" | grep -q 'retailpulses/RPagentOS'; then
+    pass "DATABASE_CAPABILITIES.yaml: RPagentOS listed as consumer of ticketing"
+  else
+    warn "DATABASE_CAPABILITIES.yaml: RPagentOS not found under ticketing"
+  fi
 else
-  warn "DATABASE_CAPABILITIES.yaml not found (v5 schema — may not be created yet)"
+  fail "DATABASE_CAPABILITIES.yaml not found"
 fi

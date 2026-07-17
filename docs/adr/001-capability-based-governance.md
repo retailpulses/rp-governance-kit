@@ -89,6 +89,8 @@ Adopt capability-based governance with risk-based workload controls.
 ## References
 
 - [DATABASE_GOVERNANCE.md v1.5.0](../DATABASE_GOVERNANCE.md)
-- [DATABASE_OWNERSHIP.yaml v4](../DATABASE_OWNERSHIP.yaml)
+- [DATABASE_OWNERSHIP.yaml v5](../DATABASE_OWNERSHIP.yaml)
+- [DATABASE_ACCESS_POLICY.yaml v1](../DATABASE_ACCESS_POLICY.yaml)
+- [DATABASE_CAPABILITIES.yaml v2](../DATABASE_CAPABILITIES.yaml)
 - [DATABASE_WORKLOADS.yaml v4](../DATABASE_WORKLOADS.yaml)
 - [Issue #22](https://github.com/retailpulses/rp-governance-kit/issues/22)

@@ -22,6 +22,34 @@
 #         default_credential_class: read_only | write_scoped | admin
 #         service_role_forbidden: true | false
 #         notes: <free-text constraints>
+#
+# ── Guardrail: Classes, Not Deployment Instances ──────────────────
+#
+# ACCESS_POLICY contains only access **classes** — named transport mechanisms
+# that describe how a consumer connects. It must not contain deployment
+# instances (specific roles, views, JWTs, IPs, timeouts, or credential names).
+#
+# Good (class):
+#   permitted_access_classes:
+#     - postgrest
+#     - internal_api
+#
+# Bad (deployment instances — these belong in workload or deployment config):
+#   permitted_access_classes:
+#     - postgrest
+#     role: mercari_shop4_reader          # ← deployment config
+#     view: catalogsync_marketplace_v1    # ← deployment config
+#     jwt: eyJhbGciOiJI...                # ← NEVER in any YAML (secret)
+#     ip: 203.0.113.42                    # ← deployment config
+#     timeout: 30000                      # ← workload config
+#
+# Deployment instances (specific roles, views, IPs, timeouts) belong in:
+#   - DATABASE_WORKLOADS.yaml (workload-level configuration)
+#   - Repository deployment config (environment variables, .env, wrangler.toml)
+#   - Platform secret stores (credentials, JWTs, connection strings)
+#
+# If you are adding a field that names a specific database object, credential,
+# IP address, or timeout value, it does not belong in this file.
 
 database: retailpulses_shared
 

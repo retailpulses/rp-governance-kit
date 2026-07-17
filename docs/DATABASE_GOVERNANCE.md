@@ -4,8 +4,26 @@ Canonical organization-level database governance policy for Retailpulses reposit
 
 This document is maintained in `retailpulses/rp-governance-kit`. Repository-local files may add stricter rules but may not weaken central rules. If repo-local governance files and this central policy conflict, agents must stop and report the conflict instead of guessing.
 
-**Version:** v2.0.0
+**Version:** v1.5.0
 **Last updated:** 2026-07-17
+
+---
+
+## Governance Principle: Invariants, Not Implementations
+
+Governance defines **invariants** — conditions that must always hold true. It does not prescribe **implementations** — how a repository achieves those conditions.
+
+| Invariant (governance concern) | Implementation (repository concern) |
+|-------------------------------|-------------------------------------|
+| CatalogSync must not modify `product_catalog` schema | CatalogSync must call RPagentOS Worker API |
+| Only the owning repo may create migrations for its domain | Consumer repos must route through `internal_api` |
+| Read-only workloads must use read-only credentials | PostgREST is forbidden; use supavisor |
+| Production writes require a kill switch | Kill switch must be a Wrangler dispatch namespace |
+| High-risk workloads require dry-run evidence | Dry-run must be a shadow-database SQL script |
+
+When an existing rule mixes invariant and implementation, the invariant binding applies. The implementation is advisory unless the invariant cannot be satisfied any other way.
+
+Agents and reviewers: before treating a governance statement as blocking, ask whether it states an invariant or a preferred implementation. Only invariants labeled `MUST` are universal blockers.
 
 ---
 
@@ -602,7 +620,9 @@ See `docs/DATABASE_INCIDENT_RESPONSE.md` for resource-exhaustion, outage, and re
 
 ## References
 
-- `docs/DATABASE_OWNERSHIP.yaml` — machine-readable domain ownership registry
+- `docs/DATABASE_OWNERSHIP.yaml` — machine-readable domain ownership registry (who owns what)
+- `docs/DATABASE_ACCESS_POLICY.yaml` — machine-readable access policy (what paths and credentials are permitted)
+- `docs/DATABASE_CAPABILITIES.yaml` — machine-readable capability registry (read/write/schema_change per repo per domain)
 - `docs/DATABASE_WORKLOADS.yaml` — machine-readable workload registry
 - `docs/DATABASE_INCIDENT_RESPONSE.md` — incident response playbook
 - `docs/16_DATABASE_GOVERNANCE.md` (repo-local) — installed reference pointing to this canonical policy
@@ -615,5 +635,5 @@ See `docs/DATABASE_INCIDENT_RESPONSE.md` for resource-exhaustion, outage, and re
 This document is part of `retailpulses/rp-governance-kit`. Changes must follow the governance repository's Issue-first workflow. The canonical GitHub URL is:
 
 ```
-https://github.com/retailpulses/rp-governance-kit/blob/v2.0.0/docs/DATABASE_GOVERNANCE.md
+https://github.com/retailpulses/rp-governance-kit/blob/v1.5.0/docs/DATABASE_GOVERNANCE.md
 ```

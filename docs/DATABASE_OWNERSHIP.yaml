@@ -2,29 +2,28 @@
 # ============================
 # Canonical machine-readable domain ownership for Retailpulses shared Supabase.
 #
-# Version: 4
+# Version: 5
 # Last updated: 2026-07-17
-# Governance ref: v2.0.0
+# Governance ref: v1.5.0
 #
 # Governed by: retailpulses/rp-governance-kit
+#
+# This file answers: who owns what?
+# For access policy, see DATABASE_ACCESS_POLICY.yaml
+# For capabilities, see DATABASE_CAPABILITIES.yaml
+# For workload declarations, see DATABASE_WORKLOADS.yaml
 #
 # Schema:
 #   database: logical database name (no project ref or URL)
 #   domains:
 #     <domain-name>:
 #       domain_type: schema | consumer_capability
-#       owner: <owner-repo>                     # for schema domains
+#       owner: <owner-repo>
 #       access_class: worker_only | authenticated_user | public_read | internal_admin
 #       generated_types: <path or "exempt">
 #       cross_domain: true | false
 #       shared: true | false
-#       consumers:
-#         - repo: <consumer-repo>
-#           capabilities:
-#             read: true | false
-#             write: true | false
-#             schema_change: true | false
-#           permitted_access_classes: [postgrest, internal_api, supavisor, direct_postgres]
+#       consumers: [<repo>, ...]          # repos that read from this domain
 #       objects:
 #         tables: [<name>, ...]
 #         views: [<name>, ...]
@@ -45,14 +44,7 @@ domains:
     cross_domain: true
     shared: false
     consumers:
-      - repo: retailpulses/RPagentOS
-        capabilities:
-          read: true
-          write: false
-          schema_change: false
-        permitted_access_classes:
-          - postgrest
-          - internal_api
+      - retailpulses/RPagentOS
     objects:
       tables:
         - ticket_issue_types
@@ -99,36 +91,10 @@ domains:
     cross_domain: false
     shared: false
     consumers:
-      - repo: retailpulses/CatalogSync
-        capabilities:
-          read: true
-          write: false
-          schema_change: false
-        permitted_access_classes:
-          - postgrest
-          - internal_api
-      - repo: retailpulses/ticket-handling
-        capabilities:
-          read: true
-          write: false
-          schema_change: false
-        permitted_access_classes:
-          - postgrest
-          - internal_api
-      - repo: retailpulses/skills:sync-giga-saved-products
-        capabilities:
-          read: true
-          write: true
-          schema_change: false
-        permitted_access_classes:
-          - internal_api
-      - repo: retailpulses/skills:mercari-csv-listing
-        capabilities:
-          read: true
-          write: false
-          schema_change: false
-        permitted_access_classes:
-          - internal_api
+      - retailpulses/CatalogSync
+      - retailpulses/ticket-handling
+      - retailpulses/skills:sync-giga-saved-products
+      - retailpulses/skills:mercari-csv-listing
     objects:
       tables:
         - products
@@ -175,9 +141,8 @@ domains:
     notes: >
       Core product and platform listing data model.
       Schema and migration ownership remain with RPagentOS.
-      Consumer access paths are declared per workload in DATABASE_WORKLOADS.yaml.
+      Consumer access paths declared in DATABASE_ACCESS_POLICY.yaml.
       CatalogSync's disabled product-mirror workload is documented in the workload registry.
-      Consumer access-path approval does not transfer schema ownership.
 
   # ── Agent OS ──────────────────────────────────────────────
   agent_os:
@@ -188,14 +153,7 @@ domains:
     cross_domain: false
     shared: false
     consumers:
-      - repo: retailpulses/ticket-handling
-        capabilities:
-          read: true
-          write: false
-          schema_change: false
-        permitted_access_classes:
-          - postgrest
-          - internal_api
+      - retailpulses/ticket-handling
     objects:
       tables:
         - agent_runs
@@ -217,14 +175,7 @@ domains:
     cross_domain: false
     shared: true
     consumers:
-      - repo: retailpulses/ticket-handling
-        capabilities:
-          read: true
-          write: false
-          schema_change: false
-        permitted_access_classes:
-          - postgrest
-          - internal_api
+      - retailpulses/ticket-handling
     objects:
       tables:
         - tasks
@@ -249,14 +200,7 @@ domains:
     cross_domain: false
     shared: true
     consumers:
-      - repo: retailpulses/ticket-handling
-        capabilities:
-          read: true
-          write: false
-          schema_change: false
-        permitted_access_classes:
-          - postgrest
-          - internal_api
+      - retailpulses/ticket-handling
     objects:
       tables:
         - projects
@@ -300,14 +244,7 @@ domains:
     cross_domain: false
     shared: false
     consumers:
-      - repo: retailpulses/ticket-handling
-        capabilities:
-          read: true
-          write: false
-          schema_change: false
-        permitted_access_classes:
-          - postgrest
-          - internal_api
+      - retailpulses/ticket-handling
     objects:
       tables:
         - listing_qwen_reviews
@@ -367,12 +304,11 @@ domains:
       storage_buckets: []
     notes: >
       Consumer capability domain — CatalogSync owns no database schema objects
-      and has no supabase/ directory. It is listed here for workload tracking
-      and capability declaration purposes only. It does not own migrations for
-      any database domain. Schema ownership for the product_catalog domain
+      and has no supabase/ directory. Listed here for workload tracking
+      and capability declaration purposes. Does not own migrations for any
+      database domain. Schema ownership for the product_catalog domain
       remains with retailpulses/RPagentOS.
-      CatalogSync may use approved server-side access paths (PostgREST,
-      internal_api) declared per workload in DATABASE_WORKLOADS.yaml.
+      CatalogSync may use approved server-side access paths declared in
+      DATABASE_ACCESS_POLICY.yaml and DATABASE_WORKLOADS.yaml.
       INCIDENT #23: The disabled product-mirror workload requires explicit
-      re-approval before re-enable. See DATABASE_WORKLOADS.yaml and
-      DATABASE_INCIDENT_RESPONSE.md for details.
+      re-approval before re-enable.

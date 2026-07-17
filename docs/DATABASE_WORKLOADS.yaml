@@ -3,7 +3,7 @@
 # Canonical machine-readable registry of all recurring database workloads.
 # One-off workloads are declared in their originating Issue or work brief.
 #
-# Version: 4
+# Version: 5
 # Last updated: 2026-07-17
 # Governance ref: v1.5.0
 #
@@ -83,6 +83,7 @@
 # Optional fields for any entry:
 #   depends_on:               [workload_id, ...]
 #   excluded_windows:         cron expressions or time windows when this workload must NOT run
+#   credential_contract:      deployment-level credential details (role, forbiddance, rotation)
 #   approved_by:              who authorized
 #   approved_at:              YYYY-MM-DD
 #   last_reviewed:            YYYY-MM-DD
@@ -420,7 +421,7 @@ workloads:
     access_path: postgrest
     credential_class: read_only
     trigger: "*/10 * * * * full; * * * * * bounded priority"
-    status: pending_approval
+    status: active
     kill_switch:
       method: deploy_rollback
       identifier: CATALOGSYNC_SHOP4_ENABLED
@@ -432,6 +433,97 @@ workloads:
         Mercari shop4 inventory, presale title prefix, and shipping lead time.
         It does not write Supabase and does not cover shops 1-3, Amazon,
         Rakuten, dashboards, or archival.
+      affected_tables:
+        - platform_accounts
+        - platform_listings
+        - platform_listing_skus
+        - product_variants
+        - product_commercials
+      expected_volume_rows_min: 5000
+      expected_volume_rows_target: 22000
+      expected_volume_rows_max: 25000
+      expected_request_count_min: 10
+      expected_request_count_max: 100
+      expected_runtime_seconds_max: 540
+      concurrency_max: 1
+      statement_timeout_ms: 20000
+      max_retries: 3
+      retry_strategy: exponential_backoff_with_jitter
+      batch_size_min: 1
+      batch_size_max: 500
+      source_repo: retailpulses/CatalogSync
+      deployed_from: "dc283f6"
+      request_budget:
+        max_requests_per_invocation: 100
+        max_rows_per_invocation: 25000
+        max_requests_per_1000_input_rows: 5
+        bulk_fetch_strategy: pagination-cursor
+      change_aware_writes:
+        enabled: true
+        freshness_strategy: run_level
+        unchanged_write_ratio_target: 0.0
+      rollout_gates:
+        dry_run_completed: true
+        canary_completed: true
+        canary_row_limit: 5
+        healthy_cycles_required: 3
+        healthy_cycles_completed: 3
+        re_enable_approval: false
+      monitoring:
+        warning_thresholds:
+          connections_pct: 80
+          cpu_pct: 70
+          timeout_rate_pct: 5
+          retry_budget_pct: 30
+        critical_thresholds:
+          connections_pct: 95
+          cpu_pct: 90
+          timeout_rate_pct: 15
+          retry_budget_pct: 50
+      incident_ref: "retailpulses/CatalogSync#23"
+      rollback: "Deploy rollback to disable CATALOGSYNC_SHOP4_ENABLED"
+    credential_contract:
+      role: catalogsync_shop4_reader
+      service_role_forbidden: true
+      database_writes_forbidden: true
+      rotation_days_max: 90
+      storage: /root/mercari-sync/.env
+      file_mode: "0600"
+    approved_by: "retailpulses/CatalogSync#29"
+    approved_at: "2026-07-17"
+    last_reviewed: "2026-07-17"
+    notes: >
+      Owner approval via RPagentOS PRs 33 and 34 (read-only shop4 projection
+      and dedicated Auth identity).
+
+      Active views: catalogsync_mercari_shop4_listing_map_v1 and
+      catalogsync_mercari_shop4_catalog_v1. The dedicated
+      catalogsync_shop4_reader credential is limited to the approved Shop4
+      projections and cannot read Shops 1-3 or base tables. Migration to the
+      planned shared projections is a separate, not-yet-activated change.
+
+      The runtime token must never be a Supabase service-role credential.
+      Completion report at CatalogSync PR #32.
+
+  # ── CatalogSync Mercari shop1 read projection ─────────────────────────
+  catalogsync_mercari_shop1_read:
+    owner_repo: retailpulses/CatalogSync
+    domain: product_catalog
+    mode: read_only
+    access_path: postgrest
+    credential_class: read_only
+    trigger: "*/10 * * * * full; * * * * * bounded priority"
+    status: pending_approval
+    kill_switch:
+      method: deploy_rollback
+      identifier: CATALOGSYNC_SHOP1_ENABLED
+    safety_profile:
+      category: scheduled_jobs
+      risk_level: medium
+      description: >
+        Read-only Supabase projection for Mercari shop1 inventory, presale
+        title prefix, and shipping lead time reconciliation. Matches the
+        active shop4 pattern. Does not write Supabase.
       affected_tables:
         - platform_accounts
         - platform_listings
@@ -479,10 +571,10 @@ workloads:
           cpu_pct: 90
           timeout_rate_pct: 15
           retry_budget_pct: 50
-      incident_ref: "retailpulses/CatalogSync#23"
-      rollback: "Deploy rollback to disable CATALOGSYNC_SHOP4_ENABLED"
+      incident_ref: ""
+      rollback: "Deploy rollback to disable CATALOGSYNC_SHOP1_ENABLED"
     credential_contract:
-      role: catalogsync_shop4_reader
+      role: catalogsync_shop1_reader
       service_role_forbidden: true
       database_writes_forbidden: true
       rotation_days_max: 90
@@ -490,16 +582,207 @@ workloads:
       file_mode: "0600"
     approved_by: ""
     approved_at:
-    last_reviewed: "2026-07-16"
+    last_reviewed: "2026-07-17"
     notes: >
-      Owner approval is represented by the RPagentOS migration that provisions
-      the column-limited read role and shop-isolation policies. The runtime
-      token must never be a Supabase service-role credential. Production
-      Mercari access remains restricted to the declared VPS host.
-      Per-shop kill switches should be modeled in workload configuration rather
-      than duplicating the governance structure for each shop. When shops share
-      the same company owner, runtime, operator, data classification, and
-      permission level, prefer a parameterized/shared workload model.
+      Views: catalogsync_mercari_listing_map_v1, catalogsync_mercari_catalog_v1
+      (shared across all four Mercari shops).  Rows include shop_code.
+
+      Role: catalogsync_shop1_reader (NOLOGIN, NOBYPASSRLS).  RLS policy
+      enforces shop_code = 'shop1' at the database boundary — this credential
+      cannot read shop2/3/4 rows.  Per-shop roles enable independent revocation
+      without cross-shop blast radius.
+
+      Mercari shop ID: WMyisFmhbGWyVAPEwsfirn.
+
+      Requires RPagentOS view provisioning and owner approval before
+      production cutover. Must follow the single-writer transition in
+      CatalogSync plan docs/plans/shops-1-3-supabase-wiring-2026-07-17.md.
+
+  # ── CatalogSync Mercari shop2 read projection ─────────────────────────
+  catalogsync_mercari_shop2_read:
+    owner_repo: retailpulses/CatalogSync
+    domain: product_catalog
+    mode: read_only
+    access_path: postgrest
+    credential_class: read_only
+    trigger: "*/10 * * * * full; * * * * * bounded priority"
+    status: pending_approval
+    kill_switch:
+      method: deploy_rollback
+      identifier: CATALOGSYNC_SHOP2_ENABLED
+    safety_profile:
+      category: scheduled_jobs
+      risk_level: medium
+      description: >
+        Read-only Supabase projection for Mercari shop2 inventory, presale
+        title prefix, and shipping lead time reconciliation. Matches the
+        active shop4 pattern. Does not write Supabase.
+      affected_tables:
+        - platform_accounts
+        - platform_listings
+        - platform_listing_skus
+        - product_variants
+        - product_commercials
+      expected_volume_rows_min: 5000
+      expected_volume_rows_target: 22000
+      expected_volume_rows_max: 25000
+      expected_request_count_min: 10
+      expected_request_count_max: 100
+      expected_runtime_seconds_max: 540
+      concurrency_max: 1
+      statement_timeout_ms: 20000
+      max_retries: 3
+      retry_strategy: exponential_backoff_with_jitter
+      batch_size_min: 1
+      batch_size_max: 500
+      source_repo: retailpulses/CatalogSync
+      deployed_from: ""
+      request_budget:
+        max_requests_per_invocation: 100
+        max_rows_per_invocation: 25000
+        max_requests_per_1000_input_rows: 5
+        bulk_fetch_strategy: pagination-cursor
+      change_aware_writes:
+        enabled: true
+        freshness_strategy: run_level
+        unchanged_write_ratio_target: 0.0
+      rollout_gates:
+        dry_run_completed: false
+        canary_completed: false
+        canary_row_limit: 5
+        healthy_cycles_required: 3
+        healthy_cycles_completed: 0
+        re_enable_approval: false
+      monitoring:
+        warning_thresholds:
+          connections_pct: 80
+          cpu_pct: 70
+          timeout_rate_pct: 5
+          retry_budget_pct: 30
+        critical_thresholds:
+          connections_pct: 95
+          cpu_pct: 90
+          timeout_rate_pct: 15
+          retry_budget_pct: 50
+      incident_ref: ""
+      rollback: "Deploy rollback to disable CATALOGSYNC_SHOP2_ENABLED"
+    credential_contract:
+      role: catalogsync_shop2_reader
+      service_role_forbidden: true
+      database_writes_forbidden: true
+      rotation_days_max: 90
+      storage: /root/mercari-sync/.env
+      file_mode: "0600"
+    approved_by: ""
+    approved_at:
+    last_reviewed: "2026-07-17"
+    notes: >
+      Views: catalogsync_mercari_listing_map_v1, catalogsync_mercari_catalog_v1
+      (shared across all four Mercari shops).  Rows include shop_code.
+
+      Role: catalogsync_shop2_reader (NOLOGIN, NOBYPASSRLS).  RLS policy
+      enforces shop_code = 'shop2' at the database boundary — this credential
+      cannot read shop1/3/4 rows.  Per-shop roles enable independent revocation
+      without cross-shop blast radius.
+
+      Mercari shop ID: ZaMyGWzp6hUdgDh5E9ADob.
+
+      Requires RPagentOS view provisioning and owner approval before
+      production cutover. Must follow the single-writer transition in
+      CatalogSync plan docs/plans/shops-1-3-supabase-wiring-2026-07-17.md.
+
+  # ── CatalogSync Mercari shop3 read projection ─────────────────────────
+  catalogsync_mercari_shop3_read:
+    owner_repo: retailpulses/CatalogSync
+    domain: product_catalog
+    mode: read_only
+    access_path: postgrest
+    credential_class: read_only
+    trigger: "*/10 * * * * full; * * * * * bounded priority"
+    status: pending_approval
+    kill_switch:
+      method: deploy_rollback
+      identifier: CATALOGSYNC_SHOP3_ENABLED
+    safety_profile:
+      category: scheduled_jobs
+      risk_level: medium
+      description: >
+        Read-only Supabase projection for Mercari shop3 inventory, presale
+        title prefix, and shipping lead time reconciliation. Matches the
+        active shop4 pattern. Does not write Supabase.
+      affected_tables:
+        - platform_accounts
+        - platform_listings
+        - platform_listing_skus
+        - product_variants
+        - product_commercials
+      expected_volume_rows_min: 5000
+      expected_volume_rows_target: 22000
+      expected_volume_rows_max: 25000
+      expected_request_count_min: 10
+      expected_request_count_max: 100
+      expected_runtime_seconds_max: 540
+      concurrency_max: 1
+      statement_timeout_ms: 20000
+      max_retries: 3
+      retry_strategy: exponential_backoff_with_jitter
+      batch_size_min: 1
+      batch_size_max: 500
+      source_repo: retailpulses/CatalogSync
+      deployed_from: ""
+      request_budget:
+        max_requests_per_invocation: 100
+        max_rows_per_invocation: 25000
+        max_requests_per_1000_input_rows: 5
+        bulk_fetch_strategy: pagination-cursor
+      change_aware_writes:
+        enabled: true
+        freshness_strategy: run_level
+        unchanged_write_ratio_target: 0.0
+      rollout_gates:
+        dry_run_completed: false
+        canary_completed: false
+        canary_row_limit: 5
+        healthy_cycles_required: 3
+        healthy_cycles_completed: 0
+        re_enable_approval: false
+      monitoring:
+        warning_thresholds:
+          connections_pct: 80
+          cpu_pct: 70
+          timeout_rate_pct: 5
+          retry_budget_pct: 30
+        critical_thresholds:
+          connections_pct: 95
+          cpu_pct: 90
+          timeout_rate_pct: 15
+          retry_budget_pct: 50
+      incident_ref: ""
+      rollback: "Deploy rollback to disable CATALOGSYNC_SHOP3_ENABLED"
+    credential_contract:
+      role: catalogsync_shop3_reader
+      service_role_forbidden: true
+      database_writes_forbidden: true
+      rotation_days_max: 90
+      storage: /root/mercari-sync/.env
+      file_mode: "0600"
+    approved_by: ""
+    approved_at:
+    last_reviewed: "2026-07-17"
+    notes: >
+      Views: catalogsync_mercari_listing_map_v1, catalogsync_mercari_catalog_v1
+      (shared across all four Mercari shops).  Rows include shop_code.
+
+      Role: catalogsync_shop3_reader (NOLOGIN, NOBYPASSRLS).  RLS policy
+      enforces shop_code = 'shop3' at the database boundary — this credential
+      cannot read shop1/2/4 rows.  Per-shop roles enable independent revocation
+      without cross-shop blast radius.
+
+      Mercari shop ID: 2JGrmZqojnBMfdWrtP2xk3.
+
+      Requires RPagentOS view provisioning and owner approval before
+      production cutover. Must follow the single-writer transition in
+      CatalogSync plan docs/plans/shops-1-3-supabase-wiring-2026-07-17.md.
 
   # ── Documentation for New Entries ────────────────────────────────────────
   #

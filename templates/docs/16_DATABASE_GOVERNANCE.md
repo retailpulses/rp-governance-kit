@@ -28,6 +28,26 @@ This file is the repository-local entrypoint for Retailpulses database governanc
 - A replacement for `docs/DATABASE_WORKLOADS.yaml`.
 - A substitute for the repository-specific declarations in `docs/16_DATABASE_GOVERNANCE.local.md`.
 
+## Minimal Local Declaration
+
+Each business repository should contain only a minimal local declaration. Do not copy the complete governance document into each repository. The pattern:
+
+```markdown
+## Database governance
+
+Canonical policy: `retailpulses/rp-governance-kit`
+
+This repository:
+- does not own migrations for the `<domain>` domain;
+- may use approved server-side read paths declared in the central registry;
+- must not expose privileged database credentials to frontend code;
+- must follow production activation controls for writing or high-risk workloads.
+
+Repository-specific details are documented locally.
+```
+
+Governance defines ownership, capabilities, privilege boundaries, and production risk controls. Business repositories choose implementation details within those approved boundaries. Central prose edits do not require downstream repository updates.
+
 ## Agent Instructions
 
 1. Before any Supabase, migration, schema, RLS, Storage, or generated-types work, read this file.
@@ -89,7 +109,7 @@ Workloads that do not yet have a canonical registry entry in `DATABASE_WORKLOADS
 
 Repositories that do not host any database-writing workloads should state:
 
-> **Workload declaration:** This repository has no database-writing workloads. All database access is read-only or mediated through an internal API that handles workload safety in its owning repository.
+> **Workload declaration:** This repository has no database-writing workloads. All database access is read-only. Production writing workloads are declared in the central workload registry.
 
 ## Quick Reference
 
@@ -105,7 +125,7 @@ Repositories that do not host any database-writing workloads should state:
 | Workload registry | Recurring workloads must be registered in `DATABASE_WORKLOADS.yaml` |
 | N+1 prohibition | No per-record DB/API lookups in loops; use bulk retrieval; declare max_requests_per_invocation and max_requests_per_1000_input_rows |
 | Change-aware writes | Periodic scans must not rewrite unchanged rows for per-row timestamps; prefer run-level freshness |
-| Access path | Every workload must declare `internal_api`, `supavisor`, `postgrest`, or `direct_postgres` |
+| Access path | Every workload must declare `postgrest`, `supavisor`, `internal_api`, or `direct_postgres`; consumers may use any approved server-side path |
 | Release mapping | Scheduled production workloads must map to a reviewed Git commit; no untracked VPS source |
 | Rollout gates | High-risk: zero-write dry-run → bounded canary → manual full run → ≥2 healthy scheduled cycles |
 | Run health independence | Current-run health not based on historical alerts; separate this-run metrics from known debt |

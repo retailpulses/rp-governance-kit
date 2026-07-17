@@ -11,8 +11,10 @@
 
 - Frontend may only use public-safe / anon keys with RLS-aware access.
 - Service role keys must never be exposed to frontend code.
-- Supabase access should follow least privilege.
-- Direct database access from scripts must be justified and documented.
+- Server-side workloads may access Supabase directly through an approved least-privilege access path (PostgREST, Supabase client, RPC, Supavisor, direct Postgres, or internal API).
+- Privileged, production-writing, or destructive access requires additional controls (see `docs/DATABASE_GOVERNANCE.md` §13).
+- All database access must follow least privilege. Credential scope must match workload capability.
+- Access paths must be declared in workload entries (`DATABASE_WORKLOADS.yaml`) and consistent with permitted access classes in `DATABASE_OWNERSHIP.yaml`.
 
 ## Secrets Management
 

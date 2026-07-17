@@ -366,7 +366,7 @@ workloads:
       batch_size_min: 1
       batch_size_max: 200
       source_repo: retailpulses/CatalogSync
-      deployed_from: "retailpulses/CatalogSync@57ceb1e1c31e749088063ac7ea18555d5dc413bc"
+      deployed_from: "retailpulses/CatalogSync@8350eae; Worker 9f23e88c-c058-477e-a0a1-e0f1f485089f"
       request_budget:
         max_requests_per_invocation: 50
         max_requests_per_1000_input_rows: 20

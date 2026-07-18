@@ -28,6 +28,7 @@
 #         tables: [<name>, ...]
 #         views: [<name>, ...]
 #         functions: [<name>, ...]
+#         triggers: [<name>, ...]          # trigger objects on domain tables
 #         storage_buckets: [<name>, ...]
 #       notes: <free-text technical debt, warnings, or domain-specific constraints>
 
@@ -137,6 +138,10 @@ domains:
         - compute_inventory_status
         - compute_presale_qty
         - compute_mercari_qty
+        - compute_mercari_price_incl_shipping
+        - trg_product_commercials_pricing
+      triggers:
+        - trg_pricing ON product_commercials
       storage_buckets: []
     notes: >
       Core product and platform listing data model.

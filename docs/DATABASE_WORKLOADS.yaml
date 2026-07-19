@@ -1,11 +1,15 @@
-# Database Workload Registry
-# ===========================
-# Canonical machine-readable registry of all recurring database workloads.
-# One-off workloads are declared in their originating Issue or work brief.
+# Database Workload Registry — Shared-Database Risk Governance
+# ==========================================================
+# Registry of recurring workloads that require shared-database ownership,
+# access-path, credential, or database-risk governance.
 #
-# Version: 5
-# Last updated: 2026-07-17
-# Governance ref: v1.5.0
+# This is NOT a master inventory of all sync behavior. Schedules, release SHAs,
+# batch sizes, marketplace mapping, and monitoring thresholds are owned by the
+# business repository's local sync inventory (docs/SYNC_JOB_INVENTORY.md).
+#
+# Version: 6
+# Last updated: 2026-07-19
+# Governance ref: v1.6.0
 #
 # Governed by: retailpulses/rp-governance-kit
 #
@@ -17,13 +21,13 @@
 #
 # Standard declaration (minimum for all workloads):
 #
-#   workload_id:               unique identifier (kebab-case)
+#   workload_id:               unique identifier (lower_snake_case)
 #   owner_repo:                GitHub owner/repo
 #   domain:                    domain from DATABASE_OWNERSHIP.yaml
 #   mode:                      read_only | write
 #   access_path:               postgrest | supavisor | internal_api | direct_postgres
 #   credential_class:          read_only | write_scoped | admin | service_role
-#   trigger:                   cron_expression | manual | event_driven | on_deploy
+#   triggers:                  structured trigger objects (see below)
 #   status:                    active | disabled | pending_approval
 #   kill_switch:
 #     method:                  worker_cancel | dashboard_session_terminate | sql_terminate_backend | deploy_rollback
@@ -45,38 +49,14 @@
 #     risk_level:              low | medium | high
 #     description:             human-readable description
 #     affected_tables:         [table_name, ...]
-#     expected_volume_rows_min: integer
-#     expected_volume_rows_target: integer (optional)
-#     expected_volume_rows_max: integer
-#     expected_request_count_min: integer
-#     expected_request_count_max: integer
-#     expected_runtime_seconds_max: integer
 #     concurrency_max:         integer
 #     statement_timeout_ms:    integer
 #     max_retries:             integer
 #     retry_strategy:          exponential_backoff_with_jitter | fixed_delay | none
-#     batch_size_min:          integer (optional)
-#     batch_size_max:          integer
-#     source_repo:             GitHub repo containing the workload source
-#     deployed_from:           commit SHA or release tag
 #     request_budget:
 #       max_requests_per_invocation: integer
 #       max_requests_per_1000_input_rows: integer
 #       bulk_fetch_strategy:  IN-clause-batch | bulk-endpoint | pagination-cursor | none
-#     change_aware_writes:
-#       enabled:               true | false
-#       freshness_strategy:    run_level | per_row
-#       unchanged_write_ratio_target: decimal
-#     rollout_gates:
-#       dry_run_completed:     true | false
-#       canary_completed:      true | false
-#       canary_row_limit:      integer
-#       healthy_cycles_required: integer
-#       healthy_cycles_completed: integer
-#       re_enable_approval:    true | false
-#     monitoring:
-#       warning_thresholds:    { connections_pct, cpu_pct, timeout_rate_pct, retry_budget_pct }
-#       critical_thresholds:   { connections_pct, cpu_pct, timeout_rate_pct, retry_budget_pct }
 #     incident_ref:            GitHub issue URL or #number
 #     rollback:                URL or description of how to undo this workload's effects
 #
@@ -100,7 +80,8 @@ workloads:
     mode: write
     access_path: postgrest
     credential_class: write_scoped
-    trigger: event_driven
+    triggers:
+      - type: event
     status: pending_approval
     kill_switch:
       method: deploy_rollback
@@ -120,48 +101,17 @@ workloads:
         - platform_accounts
         - ticket_share_tokens
         - ticket_share_attachments
-      expected_volume_rows_min: 1
-      expected_volume_rows_target: 2
-      expected_volume_rows_max: 52
-      expected_request_count_min: 1
-      expected_request_count_max: 6
-      expected_runtime_seconds_max: 10
       concurrency_max: 1
       statement_timeout_ms: 5000
       max_retries: 0
       retry_strategy: none
-      batch_size_min: 1
-      batch_size_max: 50
-      source_repo: retailpulses/ticket-handling
-      deployed_from: ""
       request_budget:
         max_requests_per_invocation: 6
         max_requests_per_1000_input_rows: 6000
         bulk_fetch_strategy: none
-      change_aware_writes:
-        enabled: true
-        freshness_strategy: run_level
-        unchanged_write_ratio_target: 0.0
-      rollout_gates:
-        dry_run_completed: true
-        canary_completed: false
-        canary_row_limit: 1
-        healthy_cycles_required: 2
-        healthy_cycles_completed: 0
-        re_enable_approval: false
-      monitoring:
-        warning_thresholds:
-          connections_pct: 80
-          cpu_pct: 70
-          timeout_rate_pct: 5
-          retry_budget_pct: 30
-        critical_thresholds:
-          connections_pct: 95
-          cpu_pct: 90
-          timeout_rate_pct: 15
-          retry_budget_pct: 50
       incident_ref: ""
       rollback: "Deploy rollback to remove ENABLE_TICKET_SHARES flag"
+    local_inventory_ref: docs/SYNC_JOB_INVENTORY.md
     approved_by: "retailpulses/ticket-handling#151"
     approved_at: "2026-07-16"
     last_reviewed: "2026-07-16"
@@ -174,86 +124,7 @@ workloads:
       until the reviewed ticket-handling commit is recorded in deployed_from,
       schema backup/preflight gates pass, and the ConoHa canary completes.
 
-  # ── Example / Template Entry (standard, low-risk) ─────────────────────
-  example_low_risk_read:
-    owner_repo: retailpulses/example-repo
-    domain: example
-    mode: read_only
-    access_path: postgrest
-    credential_class: read_only
-    trigger: manual
-    status: pending_approval
-    kill_switch:
-      method: deploy_rollback
-      identifier: EXAMPLE_READ_ENABLED
-    notes: >
-      EXAMPLE — Replace with real workload data. Low-risk read-only workloads
-      require only the standard declaration fields. No safety_profile needed.
-
-  # ── Example / Template Entry (extended, high-risk) ────────────────────
-  example_high_risk_sync:
-    owner_repo: retailpulses/example-repo
-    domain: example
-    mode: write
-    access_path: postgrest
-    credential_class: write_scoped
-    trigger: "0 */6 * * *"
-    status: pending_approval
-    kill_switch:
-      method: deploy_rollback
-      identifier: EXAMPLE_SYNC_ENABLED
-    safety_profile:
-      category: syncs
-      risk_level: high
-      description: "EXAMPLE — Replace with real workload description"
-      affected_tables:
-        - example_products
-        - example_inventory
-      expected_volume_rows_min: 50000
-      expected_volume_rows_max: 200000
-      expected_request_count_min: 200
-      expected_request_count_max: 800
-      expected_runtime_seconds_max: 1200
-      concurrency_max: 3
-      statement_timeout_ms: 60000
-      max_retries: 3
-      retry_strategy: exponential_backoff_with_jitter
-      batch_size_min: 1000
-      batch_size_max: 5000
-      source_repo: retailpulses/example-repo
-      deployed_from: ""
-      request_budget:
-        max_requests_per_invocation: 800
-        max_requests_per_1000_input_rows: 160
-        bulk_fetch_strategy: bulk-endpoint
-      change_aware_writes:
-        enabled: true
-        freshness_strategy: run_level
-        unchanged_write_ratio_target: 0.0
-      rollout_gates:
-        dry_run_completed: false
-        canary_completed: false
-        canary_row_limit: 100
-        healthy_cycles_required: 2
-        healthy_cycles_completed: 0
-        re_enable_approval: false
-      monitoring:
-        warning_thresholds:
-          connections_pct: 80
-          cpu_pct: 70
-          timeout_rate_pct: 5
-          retry_budget_pct: 30
-        critical_thresholds:
-          connections_pct: 95
-          cpu_pct: 90
-          timeout_rate_pct: 15
-          retry_budget_pct: 50
-      incident_ref: ""
-      rollback: "Deploy rollback"
-    notes: >
-      EXAMPLE — Replace with real workload data. High-risk sync workloads
-      require the extended safety_profile with all rollout gates, monitoring
-      thresholds, and change-aware write configuration.
+  # Example entries moved to templates/DATABASE_WORKLOAD.example.yaml
 
   # ── CatalogSync Product Mirror ─────────────────────────────────────────
   catalogsync_product_mirror:
@@ -262,7 +133,8 @@ workloads:
     mode: write
     access_path: internal_api
     credential_class: write_scoped
-    trigger: manual
+    triggers:
+      - type: manual
     status: disabled
     kill_switch:
       method: worker_cancel
@@ -278,48 +150,17 @@ workloads:
         - products
         - product_variants
         - platform_listings
-      expected_volume_rows_min: 5570
-      expected_volume_rows_target: 5570
-      expected_volume_rows_max: 5570
-      expected_request_count_min: 10
-      expected_request_count_max: 100
-      expected_runtime_seconds_max: 600
       concurrency_max: 2
       statement_timeout_ms: 30000
       max_retries: 3
       retry_strategy: exponential_backoff_with_jitter
-      batch_size_min: 100
-      batch_size_max: 250
-      source_repo: retailpulses/CatalogSync
-      deployed_from: ""
       request_budget:
         max_requests_per_invocation: 100
         max_requests_per_1000_input_rows: 18
         bulk_fetch_strategy: bulk-endpoint
-      change_aware_writes:
-        enabled: true
-        freshness_strategy: run_level
-        unchanged_write_ratio_target: 0.0
-      rollout_gates:
-        dry_run_completed: false
-        canary_completed: false
-        canary_row_limit: 100
-        healthy_cycles_required: 2
-        healthy_cycles_completed: 0
-        re_enable_approval: true
-      monitoring:
-        warning_thresholds:
-          connections_pct: 80
-          cpu_pct: 70
-          timeout_rate_pct: 5
-          retry_budget_pct: 30
-        critical_thresholds:
-          connections_pct: 95
-          cpu_pct: 90
-          timeout_rate_pct: 15
-          retry_budget_pct: 50
       incident_ref: "retailpulses/CatalogSync#23"
       rollback: "Worker cancel + deploy rollback; see DATABASE_INCIDENT_RESPONSE.md"
+    local_inventory_ref: docs/SYNC_JOB_INVENTORY.md
     approved_by: "Requires explicit re-approval after incident #23 remediation"
     approved_at: ""
     last_reviewed: ""
@@ -339,7 +180,9 @@ workloads:
     mode: read_only
     access_path: postgrest
     credential_class: read_only
-    trigger: "manual canary; schedule enabled only after rollout gates"
+    triggers:
+      - type: manual
+    # schedule enabled only after rollout gates
     status: active
     kill_switch:
       method: deploy_rollback
@@ -354,48 +197,17 @@ workloads:
         catalogsync_marketplace_projection_v1 view.
       affected_tables:
         - catalogsync_marketplace_projection_v1
-      expected_volume_rows_min: 1
-      expected_volume_rows_target: 2500
-      expected_volume_rows_max: 10000
-      expected_request_count_min: 1
-      expected_request_count_max: 50
-      expected_runtime_seconds_max: 120
       concurrency_max: 4
       statement_timeout_ms: 10000
       max_retries: 2
       retry_strategy: exponential_backoff_with_jitter
-      batch_size_min: 1
-      batch_size_max: 200
-      source_repo: retailpulses/CatalogSync
-      deployed_from: "retailpulses/CatalogSync@8350eae; Worker 9f23e88c-c058-477e-a0a1-e0f1f485089f"
       request_budget:
         max_requests_per_invocation: 50
         max_requests_per_1000_input_rows: 20
         bulk_fetch_strategy: pagination-cursor
-      change_aware_writes:
-        enabled: false
-        freshness_strategy: run_level
-        unchanged_write_ratio_target: 0.0
-      rollout_gates:
-        dry_run_completed: false
-        canary_completed: false
-        canary_row_limit: 1
-        healthy_cycles_required: 2
-        healthy_cycles_completed: 0
-        re_enable_approval: false
-      monitoring:
-        warning_thresholds:
-          connections_pct: 80
-          cpu_pct: 70
-          timeout_rate_pct: 5
-          retry_budget_pct: 30
-        critical_thresholds:
-          connections_pct: 95
-          cpu_pct: 90
-          timeout_rate_pct: 15
-          retry_budget_pct: 50
       incident_ref: ""
       rollback: "Deploy rollback to disable CATALOGSYNC_MARKETPLACE_PROJECTION_ENABLED"
+    local_inventory_ref: docs/SYNC_JOB_INVENTORY.md
     credential_contract:
       role: catalogsync_marketplace_reader
       service_role_forbidden: true
@@ -420,7 +232,14 @@ workloads:
     mode: read_only
     access_path: postgrest
     credential_class: read_only
-    trigger: "*/10 * * * * full; * * * * * bounded priority"
+    triggers:
+      - type: cron
+        expression: "*/10 * * * *"
+        mode: full
+      - type: cron
+        expression: "* * * * *"
+        delay_seconds: 30
+        mode: priority
     status: active
     kill_switch:
       method: deploy_rollback
@@ -439,49 +258,18 @@ workloads:
         - platform_listing_skus
         - product_variants
         - product_commercials
-      expected_volume_rows_min: 5000
-      expected_volume_rows_target: 22000
-      expected_volume_rows_max: 25000
-      expected_request_count_min: 10
-      expected_request_count_max: 100
-      expected_runtime_seconds_max: 540
       concurrency_max: 1
       statement_timeout_ms: 20000
       max_retries: 3
       retry_strategy: exponential_backoff_with_jitter
-      batch_size_min: 1
-      batch_size_max: 500
-      source_repo: retailpulses/CatalogSync
-      deployed_from: "dc283f6"
       request_budget:
         max_requests_per_invocation: 100
         max_rows_per_invocation: 25000
         max_requests_per_1000_input_rows: 5
         bulk_fetch_strategy: pagination-cursor
-      change_aware_writes:
-        enabled: true
-        freshness_strategy: run_level
-        unchanged_write_ratio_target: 0.0
-      rollout_gates:
-        dry_run_completed: true
-        canary_completed: true
-        canary_row_limit: 5
-        healthy_cycles_required: 3
-        healthy_cycles_completed: 3
-        re_enable_approval: false
-      monitoring:
-        warning_thresholds:
-          connections_pct: 80
-          cpu_pct: 70
-          timeout_rate_pct: 5
-          retry_budget_pct: 30
-        critical_thresholds:
-          connections_pct: 95
-          cpu_pct: 90
-          timeout_rate_pct: 15
-          retry_budget_pct: 50
       incident_ref: "retailpulses/CatalogSync#23"
       rollback: "Deploy rollback to disable CATALOGSYNC_SHOP4_ENABLED"
+    local_inventory_ref: docs/SYNC_JOB_INVENTORY.md
     credential_contract:
       role: catalogsync_shop4_reader
       service_role_forbidden: true
@@ -512,8 +300,15 @@ workloads:
     mode: read_only
     access_path: postgrest
     credential_class: read_only
-    trigger: "*/10 * * * * full; * * * * * bounded priority"
-    status: pending_approval
+    triggers:
+      - type: cron
+        expression: "*/10 * * * *"
+        mode: full
+      - type: cron
+        expression: "* * * * *"
+        delay_seconds: 30
+        mode: priority
+    status: active
     kill_switch:
       method: deploy_rollback
       identifier: CATALOGSYNC_SHOP1_ENABLED
@@ -530,49 +325,18 @@ workloads:
         - platform_listing_skus
         - product_variants
         - product_commercials
-      expected_volume_rows_min: 5000
-      expected_volume_rows_target: 22000
-      expected_volume_rows_max: 25000
-      expected_request_count_min: 10
-      expected_request_count_max: 100
-      expected_runtime_seconds_max: 540
       concurrency_max: 1
       statement_timeout_ms: 20000
       max_retries: 3
       retry_strategy: exponential_backoff_with_jitter
-      batch_size_min: 1
-      batch_size_max: 500
-      source_repo: retailpulses/CatalogSync
-      deployed_from: ""
       request_budget:
         max_requests_per_invocation: 100
         max_rows_per_invocation: 25000
         max_requests_per_1000_input_rows: 5
         bulk_fetch_strategy: pagination-cursor
-      change_aware_writes:
-        enabled: true
-        freshness_strategy: run_level
-        unchanged_write_ratio_target: 0.0
-      rollout_gates:
-        dry_run_completed: false
-        canary_completed: false
-        canary_row_limit: 5
-        healthy_cycles_required: 3
-        healthy_cycles_completed: 0
-        re_enable_approval: false
-      monitoring:
-        warning_thresholds:
-          connections_pct: 80
-          cpu_pct: 70
-          timeout_rate_pct: 5
-          retry_budget_pct: 30
-        critical_thresholds:
-          connections_pct: 95
-          cpu_pct: 90
-          timeout_rate_pct: 15
-          retry_budget_pct: 50
       incident_ref: ""
       rollback: "Deploy rollback to disable CATALOGSYNC_SHOP1_ENABLED"
+    local_inventory_ref: docs/SYNC_JOB_INVENTORY.md
     credential_contract:
       role: catalogsync_shop1_reader
       service_role_forbidden: true
@@ -580,23 +344,24 @@ workloads:
       rotation_days_max: 90
       storage: /root/mercari-sync/.env
       file_mode: "0600"
-    approved_by: ""
-    approved_at:
+    approved_by: "Plan ref: shops-1-3-supabase-wiring-2026-07-17.md"
+    approved_at: "2026-07-17"
     last_reviewed: "2026-07-17"
     notes: >
       Views: catalogsync_mercari_listing_map_v1, catalogsync_mercari_catalog_v1
       (shared across all four Mercari shops).  Rows include shop_code.
 
-      Role: catalogsync_shop1_reader (NOLOGIN, NOBYPASSRLS).  RLS policy
+      Role: catalogsync_shop1_reader (NOLOGIN, NOBYPASSRLS).  Security-barrier view role gate
       enforces shop_code = 'shop1' at the database boundary — this credential
       cannot read shop2/3/4 rows.  Per-shop roles enable independent revocation
       without cross-shop blast radius.
 
       Mercari shop ID: WMyisFmhbGWyVAPEwsfirn.
 
-      Requires RPagentOS view provisioning and owner approval before
-      production cutover. Must follow the single-writer transition in
-      CatalogSync plan docs/plans/shops-1-3-supabase-wiring-2026-07-17.md.
+      Deployed 2026-07-17 via CatalogSync VPS release b17bd83-20260717110407.
+      Production cutover 22:00 JST 2026-07-17: 5-SKU canary passed (5/5),
+      first full sync applied 326 mutations (262 stock, 64 product), 0 failures.
+      Legacy Baserow runners disabled (single-writer transition complete).
 
   # ── CatalogSync Mercari shop2 read projection ─────────────────────────
   catalogsync_mercari_shop2_read:
@@ -605,8 +370,15 @@ workloads:
     mode: read_only
     access_path: postgrest
     credential_class: read_only
-    trigger: "*/10 * * * * full; * * * * * bounded priority"
-    status: pending_approval
+    triggers:
+      - type: cron
+        expression: "*/10 * * * *"
+        mode: full
+      - type: cron
+        expression: "* * * * *"
+        delay_seconds: 30
+        mode: priority
+    status: active
     kill_switch:
       method: deploy_rollback
       identifier: CATALOGSYNC_SHOP2_ENABLED
@@ -623,49 +395,18 @@ workloads:
         - platform_listing_skus
         - product_variants
         - product_commercials
-      expected_volume_rows_min: 5000
-      expected_volume_rows_target: 22000
-      expected_volume_rows_max: 25000
-      expected_request_count_min: 10
-      expected_request_count_max: 100
-      expected_runtime_seconds_max: 540
       concurrency_max: 1
       statement_timeout_ms: 20000
       max_retries: 3
       retry_strategy: exponential_backoff_with_jitter
-      batch_size_min: 1
-      batch_size_max: 500
-      source_repo: retailpulses/CatalogSync
-      deployed_from: ""
       request_budget:
         max_requests_per_invocation: 100
         max_rows_per_invocation: 25000
         max_requests_per_1000_input_rows: 5
         bulk_fetch_strategy: pagination-cursor
-      change_aware_writes:
-        enabled: true
-        freshness_strategy: run_level
-        unchanged_write_ratio_target: 0.0
-      rollout_gates:
-        dry_run_completed: false
-        canary_completed: false
-        canary_row_limit: 5
-        healthy_cycles_required: 3
-        healthy_cycles_completed: 0
-        re_enable_approval: false
-      monitoring:
-        warning_thresholds:
-          connections_pct: 80
-          cpu_pct: 70
-          timeout_rate_pct: 5
-          retry_budget_pct: 30
-        critical_thresholds:
-          connections_pct: 95
-          cpu_pct: 90
-          timeout_rate_pct: 15
-          retry_budget_pct: 50
       incident_ref: ""
       rollback: "Deploy rollback to disable CATALOGSYNC_SHOP2_ENABLED"
+    local_inventory_ref: docs/SYNC_JOB_INVENTORY.md
     credential_contract:
       role: catalogsync_shop2_reader
       service_role_forbidden: true
@@ -673,23 +414,24 @@ workloads:
       rotation_days_max: 90
       storage: /root/mercari-sync/.env
       file_mode: "0600"
-    approved_by: ""
-    approved_at:
+    approved_by: "Plan ref: shops-1-3-supabase-wiring-2026-07-17.md"
+    approved_at: "2026-07-17"
     last_reviewed: "2026-07-17"
     notes: >
       Views: catalogsync_mercari_listing_map_v1, catalogsync_mercari_catalog_v1
       (shared across all four Mercari shops).  Rows include shop_code.
 
-      Role: catalogsync_shop2_reader (NOLOGIN, NOBYPASSRLS).  RLS policy
+      Role: catalogsync_shop2_reader (NOLOGIN, NOBYPASSRLS).  Security-barrier view role gate
       enforces shop_code = 'shop2' at the database boundary — this credential
       cannot read shop1/3/4 rows.  Per-shop roles enable independent revocation
       without cross-shop blast radius.
 
       Mercari shop ID: ZaMyGWzp6hUdgDh5E9ADob.
 
-      Requires RPagentOS view provisioning and owner approval before
-      production cutover. Must follow the single-writer transition in
-      CatalogSync plan docs/plans/shops-1-3-supabase-wiring-2026-07-17.md.
+      Deployed 2026-07-17 via CatalogSync VPS release b17bd83-20260717110407.
+      Production cutover 22:00 JST 2026-07-17: 5-SKU canary passed (5/5),
+      first full sync applied 317 mutations (261 stock, 56 product), 0 failures.
+      Legacy Baserow runners disabled (single-writer transition complete).
 
   # ── CatalogSync Mercari shop3 read projection ─────────────────────────
   catalogsync_mercari_shop3_read:
@@ -698,8 +440,15 @@ workloads:
     mode: read_only
     access_path: postgrest
     credential_class: read_only
-    trigger: "*/10 * * * * full; * * * * * bounded priority"
-    status: pending_approval
+    triggers:
+      - type: cron
+        expression: "*/10 * * * *"
+        mode: full
+      - type: cron
+        expression: "* * * * *"
+        delay_seconds: 30
+        mode: priority
+    status: active
     kill_switch:
       method: deploy_rollback
       identifier: CATALOGSYNC_SHOP3_ENABLED
@@ -716,49 +465,18 @@ workloads:
         - platform_listing_skus
         - product_variants
         - product_commercials
-      expected_volume_rows_min: 5000
-      expected_volume_rows_target: 22000
-      expected_volume_rows_max: 25000
-      expected_request_count_min: 10
-      expected_request_count_max: 100
-      expected_runtime_seconds_max: 540
       concurrency_max: 1
       statement_timeout_ms: 20000
       max_retries: 3
       retry_strategy: exponential_backoff_with_jitter
-      batch_size_min: 1
-      batch_size_max: 500
-      source_repo: retailpulses/CatalogSync
-      deployed_from: ""
       request_budget:
         max_requests_per_invocation: 100
         max_rows_per_invocation: 25000
         max_requests_per_1000_input_rows: 5
         bulk_fetch_strategy: pagination-cursor
-      change_aware_writes:
-        enabled: true
-        freshness_strategy: run_level
-        unchanged_write_ratio_target: 0.0
-      rollout_gates:
-        dry_run_completed: false
-        canary_completed: false
-        canary_row_limit: 5
-        healthy_cycles_required: 3
-        healthy_cycles_completed: 0
-        re_enable_approval: false
-      monitoring:
-        warning_thresholds:
-          connections_pct: 80
-          cpu_pct: 70
-          timeout_rate_pct: 5
-          retry_budget_pct: 30
-        critical_thresholds:
-          connections_pct: 95
-          cpu_pct: 90
-          timeout_rate_pct: 15
-          retry_budget_pct: 50
       incident_ref: ""
       rollback: "Deploy rollback to disable CATALOGSYNC_SHOP3_ENABLED"
+    local_inventory_ref: docs/SYNC_JOB_INVENTORY.md
     credential_contract:
       role: catalogsync_shop3_reader
       service_role_forbidden: true
@@ -766,39 +484,38 @@ workloads:
       rotation_days_max: 90
       storage: /root/mercari-sync/.env
       file_mode: "0600"
-    approved_by: ""
-    approved_at:
+    approved_by: "Plan ref: shops-1-3-supabase-wiring-2026-07-17.md"
+    approved_at: "2026-07-17"
     last_reviewed: "2026-07-17"
     notes: >
       Views: catalogsync_mercari_listing_map_v1, catalogsync_mercari_catalog_v1
       (shared across all four Mercari shops).  Rows include shop_code.
 
-      Role: catalogsync_shop3_reader (NOLOGIN, NOBYPASSRLS).  RLS policy
+      Role: catalogsync_shop3_reader (NOLOGIN, NOBYPASSRLS).  Security-barrier view role gate
       enforces shop_code = 'shop3' at the database boundary — this credential
       cannot read shop1/2/4 rows.  Per-shop roles enable independent revocation
       without cross-shop blast radius.
 
       Mercari shop ID: 2JGrmZqojnBMfdWrtP2xk3.
 
-      Requires RPagentOS view provisioning and owner approval before
-      production cutover. Must follow the single-writer transition in
-      CatalogSync plan docs/plans/shops-1-3-supabase-wiring-2026-07-17.md.
+      Deployed 2026-07-17 via CatalogSync VPS release b17bd83-20260717110407.
+      Production cutover 22:00 JST 2026-07-17: 5-SKU canary passed (5/5),
+      first full sync applied 320 mutations (263 stock, 57 product), 0 failures.
+      Legacy Baserow runners disabled (single-writer transition complete).
 
   # ── Documentation for New Entries ────────────────────────────────────────
   #
   # Standard fields (required for every workload):
   #   workload_id, owner_repo, domain, mode, access_path,
-  #   credential_class, trigger, status, kill_switch
+  #   credential_class, triggers, status, kill_switch,
+  #   local_inventory_ref
   #
   # Extended safety_profile (required when: mode=write, high volume,
   #   frequent cron, privileged credential, destructive ops, large blast
   #   radius, or prior related incident):
   #   category, risk_level, description, affected_tables,
-  #   expected_volume_rows_*, expected_request_count_*,
-  #   expected_runtime_seconds_max, concurrency_max, statement_timeout_ms,
-  #   max_retries, retry_strategy, batch_size_*, source_repo, deployed_from,
-  #   request_budget, change_aware_writes, rollout_gates, monitoring,
-  #   incident_ref, rollback
+  #   concurrency_max, statement_timeout_ms, max_retries, retry_strategy,
+  #   request_budget, incident_ref, rollback
   #
   # Optional fields for any entry:
   #   depends_on, excluded_windows, credential_contract,

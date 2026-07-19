@@ -19,6 +19,7 @@ Standardizes Issue-first development across Retailpulses repos:
 - **Docs impact tracking** - system changes without docs updates are flagged.
 - **Reusable CI** - central `governance-checks.yml`, `database-governance-checks.yml`, and `post-deploy-governance.yml` called by wrapper workflows.
 - **Database governance** - canonical organization-level database policy, domain ownership registry, migration naming/quality rules, access classes, RLS policy, hosted write safety, runtime workload safety (N+1 prohibition, change-aware writes, access path declaration, rollout gates, run-health independence), incident response playbook, and workload registry.
+- **Sync Workload Governance** - central invariants for sync and batch workloads, per-repo sync job inventory, and database risk registry for shared-DB workloads.
 - **Rollout tooling** - installer and upgrade scripts for lightweight repo adoption.
 
 ## Issue Creation Rule
@@ -75,6 +76,8 @@ The policy covers:
 - Safety controls (dry-run, batching, concurrency, timeouts, retries, kill switches, approval boundaries)
 
 Supporting documents:
+- [`docs/DATABASE_ACCESS_POLICY.yaml`](docs/DATABASE_ACCESS_POLICY.yaml) — machine-readable database access control policy
+- [`docs/DATABASE_CAPABILITIES.yaml`](docs/DATABASE_CAPABILITIES.yaml) — machine-readable database capabilities registry
 - [`docs/DATABASE_OWNERSHIP.yaml`](docs/DATABASE_OWNERSHIP.yaml) — machine-readable domain ownership registry
 - [`docs/DATABASE_WORKLOADS.yaml`](docs/DATABASE_WORKLOADS.yaml) — machine-readable workload registry (safety controls per workload)
 - [`docs/DATABASE_INCIDENT_RESPONSE.md`](docs/DATABASE_INCIDENT_RESPONSE.md) — incident response playbook
@@ -83,6 +86,18 @@ After installation, each repository has:
 - `docs/16_DATABASE_GOVERNANCE.md` — local reference pointing to the canonical policy
 - `docs/16_DATABASE_GOVERNANCE.local.md` — (repo-created) repository-specific declarations
 - `.github/workflows/database-governance.yml` — thin wrapper calling the central reusable workflow
+
+## Sync Workload Governance
+
+Sync and batch workload governance is split across three artifacts:
+
+- [`docs/SYNC_WORKLOAD_GOVERNANCE.md`](docs/SYNC_WORKLOAD_GOVERNANCE.md) — central invariants: retry, idempotency, dry-run, logging, concurrency, kill switch, health checks, and rollback policies for all sync/batch workloads.
+- Per-repo `SYNC_JOB_INVENTORY.md` — local inventory tracking cron schedules, entry points, dependencies, environment requirements, owner, and runbook links.
+- [`docs/DATABASE_WORKLOADS.yaml`](docs/DATABASE_WORKLOADS.yaml) — database risk registry (shared-DB only): workload classification, safety controls, rollout gates, and access path declaration.
+
+After installation, each repository also receives:
+- `docs/17_SYNC_WORKLOAD_GOVERNANCE.md` — local reference to the canonical sync workload governance policy
+- `docs/SYNC_JOB_INVENTORY.md` — local sync job inventory (created and maintained per-repo)
 
 ## Structure
 
@@ -95,10 +110,14 @@ rp-governance-kit/
 ├── docs/
 │   ├── ISSUE_GOVERNANCE.md                   # Issue-first governance policy
 │   ├── DATABASE_GOVERNANCE.md                # Canonical database governance policy
+│   ├── DATABASE_ACCESS_POLICY.yaml           # Database access control policy
+│   ├── DATABASE_CAPABILITIES.yaml            # Database capabilities registry
 │   ├── DATABASE_OWNERSHIP.yaml               # Domain ownership registry
 │   ├── DATABASE_WORKLOADS.yaml               # Workload registry (safety controls)
-│   └── DATABASE_INCIDENT_RESPONSE.md         # Database incident response playbook
+│   ├── DATABASE_INCIDENT_RESPONSE.md         # Database incident response playbook
+│   └── SYNC_WORKLOAD_GOVERNANCE.md           # Sync workload governance
 ├── templates/
+│   ├── DATABASE_WORKLOAD.example.yaml          # Example database workload config
 │   ├── bin/                                  # Agent scripts installed into target repos
 │   │   ├── rp-issue-create
 │   │   ├── rp-issue-audit
@@ -115,7 +134,9 @@ rp-governance-kit/
 │   │   ├── 13_PLATFORM_DEPENDENCY_POLICY.md
 │   │   ├── 14_ISSUE_GOVERNANCE.md
 │   │   ├── 15_DEPLOYMENT_AND_HOUSEKEEPING.md
-│   │   └── 16_DATABASE_GOVERNANCE.md         # Installable database governance reference
+│   │   ├── 16_DATABASE_GOVERNANCE.md         # Installable database governance reference
+│   │   ├── 17_SYNC_WORKLOAD_GOVERNANCE.md    # Installable sync workload governance reference
+│   │   └── SYNC_JOB_INVENTORY.template.md    # Template for per-repo sync job inventory
 │   └── github/
 │       ├── pull_request_template.md          # PR template
 │       └── workflows/

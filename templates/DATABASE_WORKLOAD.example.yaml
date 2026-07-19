@@ -1,0 +1,85 @@
+# DATABASE_WORKLOAD.example.yaml
+# Example workload entries for the database risk registry.
+# Copy entries from here when registering a new workload.
+# See docs/DATABASE_GOVERNANCE.md for the full policy.
+
+# ── Example / Template Entry (standard, low-risk) ─────────────────────
+example_low_risk_read:
+  owner_repo: retailpulses/example-repo
+  domain: example
+  mode: read_only
+  access_path: postgrest
+  credential_class: read_only
+  trigger: manual
+  status: pending_approval
+  kill_switch:
+    method: deploy_rollback
+    identifier: EXAMPLE_READ_ENABLED
+  notes: >
+    EXAMPLE — Replace with real workload data. Low-risk read-only workloads
+    require only the standard declaration fields. No safety_profile needed.
+
+# ── Example / Template Entry (extended, high-risk) ────────────────────
+example_high_risk_sync:
+  owner_repo: retailpulses/example-repo
+  domain: example
+  mode: write
+  access_path: postgrest
+  credential_class: write_scoped
+  trigger: "0 */6 * * *"
+  status: pending_approval
+  kill_switch:
+    method: deploy_rollback
+    identifier: EXAMPLE_SYNC_ENABLED
+  safety_profile:
+    category: syncs
+    risk_level: high
+    description: "EXAMPLE — Replace with real workload description"
+    affected_tables:
+      - example_products
+      - example_inventory
+    expected_volume_rows_min: 50000
+    expected_volume_rows_max: 200000
+    expected_request_count_min: 200
+    expected_request_count_max: 800
+    expected_runtime_seconds_max: 1200
+    concurrency_max: 3
+    statement_timeout_ms: 60000
+    max_retries: 3
+    retry_strategy: exponential_backoff_with_jitter
+    batch_size_min: 1000
+    batch_size_max: 5000
+    source_repo: retailpulses/example-repo
+    deployed_from: ""
+    request_budget:
+      max_requests_per_invocation: 800
+      max_requests_per_1000_input_rows: 160
+      bulk_fetch_strategy: bulk-endpoint
+    change_aware_writes:
+      enabled: true
+      freshness_strategy: run_level
+      unchanged_write_ratio_target: 0.0
+    rollout_gates:
+      dry_run_completed: true
+      canary_completed: true
+      canary_row_limit: 100
+      healthy_cycles_required: 2
+      healthy_cycles_completed: 0
+      re_enable_approval: false
+    monitoring:
+      warning_thresholds:
+        connections_pct: 80
+        cpu_pct: 70
+        timeout_rate_pct: 5
+        retry_budget_pct: 30
+      critical_thresholds:
+        connections_pct: 95
+        cpu_pct: 90
+        timeout_rate_pct: 15
+        retry_budget_pct: 50
+    incident_ref: ""
+    rollback: "Deploy rollback"
+  notes: >
+    EXAMPLE — Replace with real workload data. High-risk sync workloads
+    require the extended safety_profile with all rollout gates, monitoring
+    thresholds, and change-aware write configuration.

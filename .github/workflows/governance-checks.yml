@@ -43,7 +43,12 @@ jobs:
           echo "=== Changed files ==="
           echo "$CHANGED"
 
-          SYSTEM_FILES=$(echo "$CHANGED" | grep -E '^(supabase/migrations/|src/.*schema|src/.*types|src/.*routes|apps/.*/pages/|apps/.*/routes/|AGENTS\.md|CLAUDE\.md)' || true)
+          # Targeted docs contracts: only specific change types require docs
+          # - New/removed production workload → sync inventory
+          # - Database schema change → current state, decision log, or schema docs
+          # - New platform dependency → platform policy/current state
+          # - Internal bug fix (unchanged contract) → no mandatory docs
+          SYSTEM_FILES=$(echo "$CHANGED" | grep -E '^(supabase/migrations/|src/.*schema|src/.*types|apps/.*/pages/|apps/.*/routes/)' || true)
           DOCS_FILES=$(echo "$CHANGED" | grep -E '^docs/|^README\.md' || true)
 
           if [ -n "$SYSTEM_FILES" ] && [ -z "$DOCS_FILES" ]; then
@@ -117,6 +122,16 @@ jobs:
           if echo "$CHANGED" | grep -qiE '(\.env|secret|credential|password|token|api_key)\.md$'; then
             echo "::warning::Possible secrets committed to tracked files. Secrets must not be committed."
             WARNINGS=$((WARNINGS + 1))
+          fi
+
+          # Sync workload governance: warn when production sync files change without inventory update
+          if echo "$CHANGED" | grep -qiE '(cron|scheduler|sync|reconcile|import|export|systemd|.service|.timer|wrangler.*cron|scripts/amazon/|scripts/rakuten/|scripts/mercari/)'; then
+            if ! echo "$CHANGED" | grep -qiE 'SYNC_JOB_INVENTORY.md'; then
+              echo "::warning::Possible production sync behavior changed without a sync inventory update."
+              echo "::warning::Confirm whether schedule, source/target, write scope, entrypoint, kill switch, or workload lifecycle changed."
+              echo "::warning::Update docs/SYNC_JOB_INVENTORY.md if governed facts changed."
+              WARNINGS=$((WARNINGS + 1))
+            fi
           fi
 
           if [ "$WARNINGS" -eq 0 ]; then

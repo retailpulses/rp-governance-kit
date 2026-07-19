@@ -201,10 +201,12 @@ workloads:
       statement_timeout_ms: 10000
       max_retries: 2
       retry_strategy: exponential_backoff_with_jitter
+
       request_budget:
         max_requests_per_invocation: 50
         max_requests_per_1000_input_rows: 20
         bulk_fetch_strategy: pagination-cursor
+
       incident_ref: ""
       rollback: "Deploy rollback to disable CATALOGSYNC_MARKETPLACE_PROJECTION_ENABLED"
     local_inventory_ref: docs/SYNC_JOB_INVENTORY.md

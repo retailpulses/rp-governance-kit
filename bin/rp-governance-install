@@ -6,6 +6,7 @@ KIT_REPO="retailpulses/rp-governance-kit"
 KIT_REF="main"
 DRY_RUN=false
 FORCE=false
+WITH_SYNC_GOVERNANCE=false
 REPOS_FILE=""
 REPOS=()
 INSTALLED=()
@@ -23,11 +24,13 @@ Usage:
   bin/rp-governance-install --repos repos.txt [options]
 
 Options:
-  --repos <file>  Batch mode: one owner/repo per line; blank lines and # comments ignored.
-  --ref <ref>     Governance kit ref used by the workflow wrapper. Default: main.
-  --dry-run       Print planned changes without pushing branches or opening PRs.
-  --force         Overwrite repo-specific docs stubs.
-  --help          Show this help.
+  --repos <file>            Batch mode: one owner/repo per line; blank lines and # comments ignored.
+  --ref <ref>               Governance kit ref used by the workflow wrapper. Default: main.
+  --dry-run                 Print planned changes without pushing branches or opening PRs.
+  --force                   Overwrite repo-specific docs stubs.
+  --with-sync-governance    Install sync workload governance (17_SYNC_WORKLOAD_GOVERNANCE.md)
+                            and inventory template (only when no inventory exists).
+  --help                    Show this help.
 USAGE
 }
 
@@ -46,7 +49,7 @@ preflight() {
   for script in rp-issue-create rp-issue-audit rp-issue-work rp-issue-closeout rp-deploy-closeout rp-repo-housekeeping; do
     [[ -f "$KIT_DIR/templates/bin/$script" ]] || die "Missing kit template: templates/bin/$script"
   done
-  for doc in 00_CURRENT_STATE.md 05_DECISION_LOG.md 16_DATABASE_GOVERNANCE.md; do
+  for doc in 00_CURRENT_STATE.md 05_DECISION_LOG.md 16_DATABASE_GOVERNANCE.md 17_SYNC_WORKLOAD_GOVERNANCE.md SYNC_JOB_INVENTORY.template.md; do
     [[ -f "$KIT_DIR/templates/docs/$doc" ]] || die "Missing kit template: templates/docs/$doc"
   done
 }
@@ -74,6 +77,10 @@ parse_args() {
         ;;
       --force)
         FORCE=true
+        shift
+        ;;
+      --with-sync-governance)
+        WITH_SYNC_GOVERNANCE=true
         shift
         ;;
       -*)
@@ -137,6 +144,9 @@ is_up_to_date() {
     "bin/rp-repo-housekeeping"
     "docs/16_DATABASE_GOVERNANCE.md"
   )
+  if [[ "$WITH_SYNC_GOVERNANCE" == true ]]; then
+    expected_files+=("docs/17_SYNC_WORKLOAD_GOVERNANCE.md")
+  fi
   local f
   for f in "${expected_files[@]}"; do
     [[ -f "$dir/$f" ]] || return 1
@@ -145,6 +155,9 @@ is_up_to_date() {
   [[ "$(tr -d '\\r\\n' < "$dir/.github/governance-ref.txt" 2>/dev/null)" == "$KIT_REF" ]] || return 1
   grep -q "rp-issue-audit" "$dir/bin/rp-issue-work" 2>/dev/null || return 1
   grep -q "16_DATABASE_GOVERNANCE" "$dir/docs/16_DATABASE_GOVERNANCE.md" 2>/dev/null || return 1
+  if [[ "$WITH_SYNC_GOVERNANCE" == true ]]; then
+    grep -q "17_SYNC_WORKLOAD_GOVERNANCE" "$dir/docs/17_SYNC_WORKLOAD_GOVERNANCE.md" 2>/dev/null || return 1
+  fi
   return 0
 }
 
@@ -181,6 +194,21 @@ copy_files() {
   # Repo-specific declarations live in docs/16_DATABASE_GOVERNANCE.local.md which is never overwritten.
   sed -e "s/__REF__/$KIT_REF/g" -e "s/__INSTALLED_AT__/$installed_at/g" \
     "$KIT_DIR/templates/docs/16_DATABASE_GOVERNANCE.md" > "docs/16_DATABASE_GOVERNANCE.md"
+
+  # Sync workload governance (only when --with-sync-governance is set)
+  if [[ "$WITH_SYNC_GOVERNANCE" == true ]]; then
+    # 17_SYNC_WORKLOAD_GOVERNANCE.md is a managed reference, like 16 — always install/update.
+    sed -e "s/__REF__/$KIT_REF/g" -e "s/__INSTALLED_AT__/$installed_at/g" \
+      "$KIT_DIR/templates/docs/17_SYNC_WORKLOAD_GOVERNANCE.md" > "docs/17_SYNC_WORKLOAD_GOVERNANCE.md"
+
+    # Inventory template: only install when no inventory exists. Never overwrite a populated inventory.
+    if [[ ! -f "docs/SYNC_JOB_INVENTORY.md" ]]; then
+      cp "$KIT_DIR/templates/docs/SYNC_JOB_INVENTORY.template.md" "docs/SYNC_JOB_INVENTORY.md"
+      echo "Sync inventory template installed. Populate it before production activation."
+    else
+      echo "Existing SYNC_JOB_INVENTORY.md found — not overwriting."
+    fi
+  fi
 
   # Record installed governance ref for upgrade detection
   echo "$KIT_REF" > ".github/governance-ref.txt"

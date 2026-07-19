@@ -4,8 +4,8 @@ Canonical organization-level database governance policy for Retailpulses reposit
 
 This document is maintained in `retailpulses/rp-governance-kit`. Repository-local files may add stricter rules but may not weaken central rules. If repo-local governance files and this central policy conflict, agents must stop and report the conflict instead of guessing.
 
-**Version:** v1.5.0
-**Last updated:** 2026-07-17
+**Version:** v1.6.0
+**Last updated:** 2026-07-19
 
 ---
 
@@ -319,6 +319,12 @@ The following organization-level checks should run periodically (target: monthly
 
 Audit results are non-blocking warnings by default. Repeated findings across multiple audit cycles should be escalated to Issues.
 
+### Database Governance vs. Sync Workload Governance
+
+This section (13) governs database-specific workload risk: access paths, credentials, schema ownership, connection limits, migration discipline, query safety, and N+1 patterns. General production sync identity, external-platform side effects, scheduler inventory, workload replacement, and retirement are governed by `docs/SYNC_WORKLOAD_GOVERNANCE.md`.
+
+Workloads registered in `docs/DATABASE_WORKLOADS.yaml` for shared-database risk governance must reference their local sync inventory. The central database workload registry is a database-risk registry, not a master inventory of all sync behavior.
+
 ## 13. Runtime Workload Safety
 
 `MUST` (subsections may vary: see individual enforcement levels below)
@@ -329,9 +335,9 @@ Every automated or agent-driven operation that writes to, syncs with, or bulk-lo
 
 | Category | Examples | Risk level |
 |----------|----------|------------|
-| **Imports** | CSV/XLSX/API bulk insert into hosted tables | High — can exhaust connections, fill disk, or lock tables |
-| **Syncs** | External→internal data mirroring, platform listing refresh | High — sustained load, retry storms on upstream errors |
-| **Backfills** | Historical data population, schema migration data rewrites | High — long-running transactions, WAL pressure |
+| **Imports** | CSV/XLSX/API bulk insert into hosted tables | Medium-to-High (depends on volume and idempotency) |
+| **Syncs** | External→internal data mirroring, platform listing refresh | Medium-to-High (external_write syncs are High; read_only pulls are Low-to-Medium) |
+| **Backfills** | Historical data population, schema migration data rewrites | High |
 | **Scheduled jobs** | Cron-triggered Workers, nightly aggregation, cleanup | Medium — silent failures accumulate, cascade at scale |
 | **Agent operations** | LLM→database write loops, multi-step transactional workflows | Medium — variable latency, connection holding |
 | **Maintenance** | VACUUM, ANALYZE, index rebuild, connection draining | Low-to-Medium — some operations are resumable, others block writes |
@@ -339,6 +345,8 @@ Every automated or agent-driven operation that writes to, syncs with, or bulk-lo
 | **Diagnostics (DML ANALYZE)** | EXPLAIN ANALYZE with INSERT/UPDATE/DELETE — executes mutations | High — DML ANALYZE runs the statement, not just inspects it; requires hosted-write approval |
 
 `EXPLAIN (ANALYZE ...)` on a read-only `SELECT` is a diagnostics operation and does not mutate data. `EXPLAIN (ANALYZE INSERT ...)`, `EXPLAIN (ANALYZE UPDATE ...)`, or `EXPLAIN (ANALYZE DELETE ...)` executes the DML statement and writes to the database — these require hosted-write approval per §6. Diagnostics tools and CI checks must distinguish between the two.
+
+> Risk levels above are defaults. Repositories may override with documented justification in the workload declaration. The key factors are: read vs. write, internal vs. external side effect, idempotency, expected volume, reversibility, and blast radius.
 
 ### 13.2 Pre-Workload Declaration
 
@@ -375,13 +383,13 @@ Connection pooling rules depend on the access path, not the client library:
 - `supabase-js` (the Supabase JavaScript client) uses HTTP/PostgREST by default. This path does **not** use PgBouncer directly — the Supabase platform manages PostgREST-to-database connection pooling server-side. Do not describe `supabase-js` as connecting through PgBouncer.
 - `supavisor`/PgBouncer pooling applies to **direct PostgreSQL connections** (e.g., `pg`, `psycopg2`, or Supabase client configured with `db.schema` and `db.url` pointing to port 6543).
 - Direct `psql` sessions must be short-lived (under 60 seconds of idle time).
-- No workload may open more than 5 concurrent database connections without explicit approval in the workload declaration.
+- No workload may open more than 5 concurrent database connections without explicit approval in the workload declaration. Exact per-workload connection limits are declared in the workload declaration, not centrally mandated.
 - Connection-held transactions (idle-in-transaction) exceeding 30 seconds must be killed. Timeout enforcement is the operator's responsibility.
 
 ### 13.5 Timeouts and Retries
 
 - Every database query must have an explicit `statement_timeout`. The default Supabase statement timeout is not a substitute for workload-level timeout configuration.
-- Retries must use exponential backoff with jitter. Maximum retries: 3 per unit of work.
+- Retries must use exponential backoff with jitter. Retry count must be bounded and appropriate to the workload risk. The default is 3 retries per unit of work; workloads with longer runs or higher idempotency guarantees may declare a different bound with justification in the workload declaration.
 - Retry budgets must be tracked. A workload that exceeds 50% retries within its declared retry budget must be paused for human review.
 - Dead-letter or error-recording mechanism: every Medium or High workload must have a durable retry/dead-letter/error-recording mechanism. The mechanism must be owned through the workload's approved access path (e.g., a Worker log, a CI artifact, or a structured Issue comment). Non-owner consumer repositories must not create dead-letter tables in another domain's schema. Lost rows without audit trail is unacceptable.
 
@@ -415,7 +423,7 @@ All row-count thresholds below refer to **total expected rows written per invoca
 
 ### 13.8 Evidence Capture
 
-After any High-category workload completes, the operator must capture and retain for 30 days:
+After any High-category workload completes, the operator must capture and retain evidence for a duration appropriate to the workload's regulatory and operational needs (default: 30 days):
 
 - Start/end timestamps
 - Row counts (expected vs. actual)
@@ -635,5 +643,5 @@ See `docs/DATABASE_INCIDENT_RESPONSE.md` for resource-exhaustion, outage, and re
 This document is part of `retailpulses/rp-governance-kit`. Changes must follow the governance repository's Issue-first workflow. The canonical GitHub URL is:
 
 ```
-https://github.com/retailpulses/rp-governance-kit/blob/v1.5.0/docs/DATABASE_GOVERNANCE.md
+https://github.com/retailpulses/rp-governance-kit/blob/v1.6.0/docs/DATABASE_GOVERNANCE.md
 ```

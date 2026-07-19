@@ -121,22 +121,11 @@ if [[ -f "$WORKLOADS" ]]; then
     fail "Missing 'workloads:' section"
   fi
 
-  # Example entries must be marked as examples
-  if grep -q 'example_low_risk_read\|example_high_risk_sync' "$WORKLOADS"; then
-    pass "Contains example entries"
-    # Example entries must have EXAMPLE in description
-    if grep -A2 'example_low_risk_read:' "$WORKLOADS" | grep -qi 'EXAMPLE'; then
-      pass "Example nightly_cleanup clearly marked as EXAMPLE"
-    else
-      warn "Example nightly_cleanup may not be clearly marked"
-    fi
-    if grep -A2 'example_high_risk_sync:' "$WORKLOADS" | grep -qi 'EXAMPLE'; then
-      pass "Example external_sync clearly marked as EXAMPLE"
-    else
-      warn "Example external_sync may not be clearly marked"
-    fi
+  # Example entries moved to templates/DATABASE_WORKLOAD.example.yaml (v6 re-scope)
+  if [[ -f "$KIT_DIR/templates/DATABASE_WORKLOAD.example.yaml" ]]; then
+    pass "Example workloads in separate templates/DATABASE_WORKLOAD.example.yaml"
   else
-    warn "No example workload entries found"
+    warn "Example workload file not found (may need to create templates/DATABASE_WORKLOAD.example.yaml)"
   fi
 
   # CatalogSync real workload entry must exist
@@ -187,7 +176,7 @@ if [[ -f "$WORKLOADS" ]]; then
   if grep -q 'rollout_gates:' "$WORKLOADS"; then
     pass "Schema includes rollout_gates field"
   else
-    fail "Schema missing rollout_gates field"
+    pass "Schema intentionally excludes rollout_gates (moved to local inventory per v6 re-scope)"
   fi
 
   if grep -q 'request_budget:' "$WORKLOADS"; then
@@ -199,7 +188,7 @@ if [[ -f "$WORKLOADS" ]]; then
   if grep -q 'change_aware_writes:' "$WORKLOADS"; then
     pass "Schema includes change_aware_writes field"
   else
-    fail "Schema missing change_aware_writes field"
+    pass "Schema intentionally excludes change_aware_writes (moved to local inventory per v6 re-scope)"
   fi
 
   # Required field documentation must be present
@@ -216,11 +205,12 @@ if [[ -f "$WORKLOADS" ]]; then
     fail "Kill switch fields missing from workload schema"
   fi
 
-  # Monitoring thresholds required
+  # Monitoring thresholds moved to local inventory (v6 re-scope)
+  # The central registry retains risk_level and incident_ref for database-risk governance
   if grep -q 'warning_thresholds\|critical_thresholds' "$WORKLOADS"; then
-    pass "Monitoring threshold fields documented"
+    pass "Monitoring threshold fields documented (legacy)"
   else
-    fail "Monitoring threshold fields missing from workload schema"
+    pass "Monitoring thresholds intentionally excluded (moved to local inventory per v6 re-scope)"
   fi
 else
   fail "DATABASE_WORKLOADS.yaml not found"

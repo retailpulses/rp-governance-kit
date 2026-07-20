@@ -96,6 +96,7 @@ domains:
       - retailpulses/ticket-handling
       - retailpulses/skills:sync-giga-saved-products
       - retailpulses/skills:mercari-csv-listing
+      - retailpulses/OrderMgmt
     objects:
       tables:
         - products

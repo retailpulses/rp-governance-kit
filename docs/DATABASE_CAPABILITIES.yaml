@@ -65,6 +65,15 @@ capabilities:
         schema_change: false
         notes: Listing projection reads through owner API.
 
+      retailpulses/OrderMgmt:
+        read: true
+        write: false
+        schema_change: false
+        notes: >
+          Reads product_commercials.effective_tcogs for cost snapshot at order
+          approval time. Writes only to own order_management domain. Any write
+          to product_catalog tables requires separate capability approval.
+
   # ── Ticketing ─────────────────────────────────────────────
   ticketing:
     owner: retailpulses/ticket-handling

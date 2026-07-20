@@ -561,6 +561,31 @@ workloads:
       first full sync applied 320 mutations (263 stock, 57 product), 0 failures.
       Legacy Baserow runners disabled (single-writer transition complete).
 
+  # ── OrderMgmt Cost Snapshot at Approval ──────────────────────────────────
+  ordermgmt_cost_snapshot:
+    owner_repo: retailpulses/OrderMgmt
+    domain: product_catalog
+    mode: read_only
+    access_path: internal_api
+    credential_class: read_only
+    triggers:
+      - type: event
+        description: "Fires on order approval (manual, bulk, or auto)"
+    status: pending_approval
+    kill_switch:
+      method: deploy_rollback
+      identifier: COST_SNAPSHOT_ENABLED
+    local_inventory_ref: docs/SYNC_JOB_INVENTORY.md
+    notes: >
+      Reads product_commercials.effective_tcogs at order approval time and
+      writes the snapshot to sales_orders.effective_tcogs_snapshot (own domain).
+      Also computes order_labels (no-discount tag). Does not write to
+      product_catalog tables. The snapshot is idempotent (IS NULL gate).
+      Transient failures block the approval so orders stay in pending for retry.
+      This workload must not use a service_role credential for product_catalog
+      reads — a dedicated read_only credential is required before production
+      activation.
+
   # ── Documentation for New Entries ────────────────────────────────────────
   #
   # Standard fields (required for every workload):

@@ -133,3 +133,17 @@ access_policy:
       default_credential_class: read_only
       service_role_forbidden: true
       notes: Listing projection through owner API.
+
+  # ── OrderMgmt (consumer of product_catalog) ─────────────────
+  retailpulses/OrderMgmt:
+    product_catalog:
+      permitted_access_classes:
+        - internal_api
+      default_credential_class: read_only
+      service_role_forbidden: true
+      notes: >
+        Reads product_commercials.effective_tcogs for order cost snapshot at
+        approval time (postApprovalSnapshot). Writes only to own domain
+        (sales_orders.effective_tcogs_snapshot, order_labels).
+        Must not write to product_catalog tables unless a write_scoped
+        capability is approved separately.

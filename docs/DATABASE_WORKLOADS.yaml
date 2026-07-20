@@ -227,6 +227,62 @@ workloads:
       migration, dedicated role JWT, endpoint smoke tests, SKU-scoped dry-runs,
       and deployed_from evidence.
 
+  # ── CatalogSync Rakuten direct VPS read projection ──────────────────
+  catalogsync_rakuten_vps_read:
+    owner_repo: retailpulses/CatalogSync
+    domain: product_catalog
+    mode: read_only
+    access_path: postgrest
+    credential_class: read_only
+    triggers:
+      - type: cron
+        expression: "*/10 * * * *"
+        mode: full
+    status: active
+    kill_switch:
+      method: config_flag
+      identifier: CATALOGSYNC_RAKUTEN_ENABLED
+    safety_profile:
+      category: scheduled_jobs
+      risk_level: medium
+      description: >
+        Direct read-only Supabase projection for the Rakuten inventory consumer
+        on the CatalogSync ConoHa VPS. Reads only the owner-managed marketplace
+        projection view and performs no database writes.
+      affected_tables:
+        - catalogsync_marketplace_projection_v1
+      concurrency_max: 1
+      statement_timeout_ms: 20000
+      max_retries: 2
+      retry_strategy: exponential_backoff_with_jitter
+      request_budget:
+        max_requests_per_invocation: 100
+        max_rows_per_invocation: 25000
+        max_requests_per_1000_input_rows: 10
+        bulk_fetch_strategy: pagination-cursor
+      incident_ref: "retailpulses/CatalogSync#61"
+      rollback: "Set CATALOGSYNC_RAKUTEN_ENABLED=false and restore the prior immutable release"
+    local_inventory_ref: docs/SYNC_JOB_INVENTORY.md
+    credential_contract:
+      role: catalogsync_marketplace_reader
+      service_role_forbidden: true
+      generic_anon_forbidden: true
+      database_writes_forbidden: true
+      rotation_days_max: 90
+      storage: /etc/catalogsync/rakuten.env
+      file_mode: "0600"
+    approved_by: "Retailpulses owner instruction to complete CatalogSync#61"
+    approved_at: "2026-07-20"
+    last_reviewed: "2026-07-20"
+    notes: >
+      Runtime is ConoHa VPS 160.251.141.110. The dedicated Supabase Auth
+      identity receives short-lived JWTs bound to catalogsync_marketplace_reader
+      and may select only catalogsync_marketplace_projection_v1. No Worker,
+      Baserow, base-table, service-role, generic-anon, direct-PostgreSQL, or
+      automatic fallback path is permitted. Activation requires a reviewed
+      CatalogSync release, full dry-run, scoped Rakuten canary, marketplace
+      verification, and failed-listing report reconciliation.
+
   # ── CatalogSync Mercari shop4 read projection ─────────────────────────
   catalogsync_mercari_shop4_read:
     owner_repo: retailpulses/CatalogSync

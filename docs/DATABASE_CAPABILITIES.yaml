@@ -135,6 +135,27 @@ capabilities:
     consumers: []
     # No external consumers. Order data is self-contained.
 
+  # ── Inquiry Management ─────────────────────────────────────
+  inquiry_management:
+    owner: retailpulses/inquiry-automation
+    domain_type: schema
+    consumers:
+      retailpulses/workers:
+        read: true
+        write: true
+        schema_change: false
+        notes: >
+          Mail-integration creates/updates inquiries, reads knowledge articles and
+          product links for AI reply context. Write-scoped credential required.
+
+      retailpulses/skills:mercari-inquiry-follow-up:
+        read: true
+        write: true
+        schema_change: false
+        notes: >
+          Reads inquiries eligible for follow-up. Writes follow_up_status and
+          follow_up_sent_at. External sends require separate authorization.
+
   # ── Catalog Sync (consumer capability domain) ─────────────
   catalog_sync:
     owner: retailpulses/CatalogSync

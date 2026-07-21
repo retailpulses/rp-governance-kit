@@ -133,3 +133,51 @@ access_policy:
       default_credential_class: read_only
       service_role_forbidden: true
       notes: Listing projection through owner API.
+
+  # ── inquiry-automation (domain owner) ───────────────────────
+  retailpulses/inquiry-automation:
+    inquiry_management:
+      permitted_access_classes:
+        - postgrest
+        - internal_api
+        - supavisor
+        - direct_postgres
+      default_credential_class: write_scoped
+      service_role_forbidden: false   # domain owner
+      notes: >
+        Domain owner. Owns schema and migrations. Workers, dashboard Functions,
+        and VPS scripts access through scoped credentials. Direct Postgres for
+        migration operations and VPS Python scripts only.
+
+  # ── workers (mail-integration consumer) ─────────────────────
+  retailpulses/workers:
+    inquiry_management:
+      permitted_access_classes:
+        - postgrest
+        - internal_api
+      default_credential_class: write_scoped
+      service_role_forbidden: true    # consumer, not owner
+      notes: >
+        Mail-integration Worker creates and updates inquiries during ingestion
+        and inquiry-skill processing. Reads inquiry product links and knowledge
+        articles for AI reply context. Must use scoped credential, not service_role.
+    product_catalog:
+      permitted_access_classes:
+        - postgrest
+      default_credential_class: read_only
+      service_role_forbidden: true
+      notes: >
+        Reads product data for inquiry product context. Read-only access to
+        approved product catalog projections only.
+
+  # ── skills:mercari-inquiry-follow-up ────────────────────────
+  retailpulses/skills:mercari-inquiry-follow-up:
+    inquiry_management:
+      permitted_access_classes:
+        - postgrest
+      default_credential_class: write_scoped
+      service_role_forbidden: true
+      notes: >
+        Reads inquiries for follow-up eligibility. Writes follow_up_status and
+        follow_up_sent_at. Database-write and external-send kill switches are
+        independent. Must use scoped credential, not service_role.

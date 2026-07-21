@@ -126,6 +126,174 @@ workloads:
 
   # Example entries moved to templates/DATABASE_WORKLOAD.example.yaml
 
+  # ── Inquiry Mail Ingestion ──────────────────────────────────────────────
+  inquiry_mail_ingestion:
+    owner_repo: retailpulses/workers
+    domain: inquiry_management
+    mode: write
+    access_path: postgrest
+    credential_class: write_scoped
+    triggers:
+      - type: cron
+        expression: "*/30 * * * *"
+        mode: full
+    status: pending_approval
+    kill_switch:
+      method: worker_cancel
+      identifier: INQUIRY_INGEST_WRITES_ENABLED
+    safety_profile:
+      category: syncs
+      risk_level: high
+      description: >
+        Mail ingestion Worker creates and updates inquiries from Zoho emails.
+        New production write path — requires full high-risk rollout gates.
+      affected_tables:
+        - inquiries
+        - inquiry_product_links
+        - inquiry_knowledge_links
+      concurrency_max: 2
+      statement_timeout_ms: 15000
+      max_retries: 3
+      retry_strategy: exponential_backoff_with_jitter
+      request_budget:
+        max_requests_per_invocation: 50
+        max_requests_per_1000_input_rows: 20
+        bulk_fetch_strategy: IN-clause-batch
+      rollback: "Set INQUIRY_INGEST_WRITES_ENABLED=false"
+    notes: >
+      Replaces Baserow table 886975 writes. Kill switch at batch boundaries.
+
+  # ── Inquiry Automation Worker ───────────────────────────────────────────
+  inquiry_automation_worker:
+    owner_repo: retailpulses/inquiry-automation
+    domain: inquiry_management
+    mode: write
+    access_path: postgrest
+    credential_class: write_scoped
+    triggers:
+      - type: cron
+        expression: "*/10 * * * *"
+        mode: full
+    status: pending_approval
+    kill_switch:
+      method: worker_cancel
+      identifier: INQUIRY_AUTOMATION_WRITES_ENABLED
+    safety_profile:
+      category: agent_operations
+      risk_level: high
+      description: >
+        Classification, product linking, and draft generation Worker.
+        New production write path — requires full high-risk rollout gates.
+      affected_tables:
+        - inquiries
+        - inquiry_product_links
+      concurrency_max: 1
+      statement_timeout_ms: 30000
+      max_retries: 3
+      retry_strategy: exponential_backoff_with_jitter
+      request_budget:
+        max_requests_per_invocation: 200
+        max_requests_per_1000_input_rows: 40
+        bulk_fetch_strategy: pagination-cursor
+      rollback: "Set INQUIRY_AUTOMATION_WRITES_ENABLED=false"
+
+  # ── Inquiry Dashboard Mutations ─────────────────────────────────────────
+  inquiry_dashboard_mutations:
+    owner_repo: retailpulses/inquiry-automation
+    domain: inquiry_management
+    mode: write
+    access_path: postgrest
+    credential_class: write_scoped
+    triggers:
+      - type: manual
+    status: pending_approval
+    kill_switch:
+      method: config_flag
+      identifier: INQUIRY_DASHBOARD_MUTATIONS_ENABLED
+    safety_profile:
+      category: agent_operations
+      risk_level: medium
+      description: >
+        Operator dashboard mutations (status changes, product links, drafts,
+        copywriting, units). Protected by Cloudflare Access JWT validation.
+        Bounded interactive writes.
+      affected_tables:
+        - inquiries
+        - inquiry_product_links
+      concurrency_max: 5
+      statement_timeout_ms: 10000
+      max_retries: 0
+      retry_strategy: none
+      request_budget:
+        max_requests_per_invocation: 100
+        max_requests_per_1000_input_rows: 100
+        bulk_fetch_strategy: none
+      rollback: "Set INQUIRY_DASHBOARD_MUTATIONS_ENABLED=false"
+
+  # ── Inquiry VPS Enrichment ──────────────────────────────────────────────
+  inquiry_vps_enrichment:
+    owner_repo: retailpulses/inquiry-automation
+    domain: inquiry_management
+    mode: write
+    access_path: direct_postgres
+    credential_class: write_scoped
+    triggers:
+      - type: manual
+    status: pending_approval
+    kill_switch:
+      method: config_flag
+      identifier: INQUIRY_ENRICHMENT_WRITES_ENABLED
+    safety_profile:
+      category: syncs
+      risk_level: high
+      description: >
+        VPS browser enrichment extracts Mercari inquiry details (customer name,
+        product ID, variant name, message content) via Playwright and writes to
+        inquiries table. Uses direct Postgres from ConoHa VPS.
+      affected_tables:
+        - inquiries
+      concurrency_max: 1
+      statement_timeout_ms: 15000
+      max_retries: 2
+      retry_strategy: exponential_backoff_with_jitter
+      request_budget:
+        max_requests_per_invocation: 100
+        max_requests_per_1000_input_rows: 100
+        bulk_fetch_strategy: IN-clause-batch
+      rollback: "Set INQUIRY_ENRICHMENT_WRITES_ENABLED=false"
+
+  # ── Inquiry Follow-up ───────────────────────────────────────────────────
+  inquiry_follow_up:
+    owner_repo: retailpulses/skills:mercari-inquiry-follow-up
+    domain: inquiry_management
+    mode: write
+    access_path: postgrest
+    credential_class: write_scoped
+    triggers:
+      - type: manual
+    status: pending_approval
+    kill_switch:
+      method: config_flag
+      identifier: INQUIRY_FOLLOWUP_DB_WRITES_ENABLED
+    safety_profile:
+      category: agent_operations
+      risk_level: high
+      description: >
+        Follow-up skill writes follow_up_status and follow_up_sent_at.
+        External Mercari message sends are controlled by a separate
+        INQUIRY_EXTERNAL_SEND_ENABLED kill switch.
+      affected_tables:
+        - inquiries
+      concurrency_max: 1
+      statement_timeout_ms: 10000
+      max_retries: 2
+      retry_strategy: exponential_backoff_with_jitter
+      request_budget:
+        max_requests_per_invocation: 50
+        max_requests_per_1000_input_rows: 50
+        bulk_fetch_strategy: pagination-cursor
+      rollback: "Set INQUIRY_FOLLOWUP_DB_WRITES_ENABLED=false"
+
   # ── CatalogSync Product Mirror ─────────────────────────────────────────
   catalogsync_product_mirror:
     owner_repo: retailpulses/CatalogSync

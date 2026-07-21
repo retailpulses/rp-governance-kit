@@ -293,6 +293,42 @@ domains:
       database. Do not rename either without a reviewed reconciliation plan.
       RLS policies exist on all tables (operator-read pattern).
 
+  # ── Inquiry Management ────────────────────────────────────
+  inquiry_management:
+    domain_type: schema
+    owner: retailpulses/inquiry-automation
+    access_class: worker_only
+    generated_types: exempt
+    cross_domain: true                # reads product_catalog.products for product linking
+    shared: false
+    consumers:
+      - retailpulses/workers          # mail-integration: inquiry create/update, product/knowledge reads
+      - retailpulses/skills:mercari-inquiry-follow-up  # follow-up reads/writes
+    objects:
+      tables:
+        - inquiries
+        - inquiry_product_links
+        - inquiry_knowledge_links
+        - knowledge_articles
+        - inquiry_statuses
+        - inquiry_types
+        - automation_statuses
+        - follow_up_statuses
+      views:
+        - inquiry_list_vw
+        - inquiry_detail_vw
+      functions:
+        - set_updated_at              # shared trigger function, created by this repo
+      storage_buckets: []
+    notes: >
+      Phase 1 MVP — replaces Baserow tables 886975 (Inquiries), 886994 (Products for inquiry
+      product context), and 897440 (Knowledge). Product reads go through RPagentOS-owned
+      product_catalog views. Migrations: 20260721000000 (core schema), 20260721000001 (views).
+      Worker, dashboard, VPS enrichment, mail-integration, and follow-up skill all consume
+      this domain. Access class is worker_only — service_role bypass with no browser-visible
+      RLS policies. Scoped PostgREST credentials required before production activation.
+      The retired Python pipeline is not a consumer.
+
   # ── Catalog Synchronization (consumer capability domain) ──
   catalog_sync:
     domain_type: consumer_capability

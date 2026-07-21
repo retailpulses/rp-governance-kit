@@ -3,7 +3,7 @@
 # Canonical access policy for Retailpulses shared Supabase.
 #
 # Version: 1
-# Last updated: 2026-07-17
+# Last updated: 2026-07-22
 # Governance ref: v1.5.0
 #
 # Governed by: retailpulses/rp-governance-kit
@@ -57,6 +57,16 @@ access_policy:
 
   # ── RPagentOS (domain owner for multiple domains) ─────────
   retailpulses/RPagentOS:
+    inquiry_management:
+      permitted_access_classes:
+        - postgrest
+      default_credential_class: read_only
+      service_role_forbidden: true
+      notes: >
+        Temporary read-only access for the coordinated public.mercari_inquiries
+        retirement and compatibility view. No inquiry table writes or schema changes.
+        Remove by 2026-10-31 after the completeness guard, caller migration, and
+        30 consecutive days of zero compatibility-view queries.
     ticketing:
       permitted_access_classes:
         - postgrest
@@ -136,18 +146,28 @@ access_policy:
 
   # ── inquiry-automation (domain owner) ───────────────────────
   retailpulses/inquiry-automation:
+    product_catalog:
+      permitted_access_classes:
+        - postgrest
+      default_credential_class: admin
+      service_role_forbidden: false
+      notes: >
+        Phase 1 worker_only runtime uses a server-side service_role credential to
+        read product_variants and platform_accounts for UUID resolution. Application
+        code performs no product_catalog writes or schema changes.
     inquiry_management:
       permitted_access_classes:
         - postgrest
         - internal_api
         - supavisor
         - direct_postgres
-      default_credential_class: write_scoped
+      default_credential_class: admin
       service_role_forbidden: false   # domain owner
       notes: >
         Domain owner. Owns schema and migrations. Workers, dashboard Functions,
-        and VPS scripts access through scoped credentials. Direct Postgres for
-        migration operations and VPS Python scripts only.
+        and VPS scripts use PostgREST through a server-side service_role credential
+        in the Phase 1 worker_only model. Direct Postgres is limited to reviewed
+        schema migration administration, never VPS runtime.
 
   # ── workers (mail-integration consumer) ─────────────────────
   retailpulses/workers:
@@ -155,29 +175,29 @@ access_policy:
       permitted_access_classes:
         - postgrest
         - internal_api
-      default_credential_class: write_scoped
-      service_role_forbidden: true    # consumer, not owner
+      default_credential_class: admin
+      service_role_forbidden: false
       notes: >
         Mail-integration Worker creates and updates inquiries during ingestion
         and inquiry-skill processing. Reads inquiry product links and knowledge
-        articles for AI reply context. Must use scoped credential, not service_role.
+        articles for AI reply context using the Phase 1 server-side service_role.
     product_catalog:
       permitted_access_classes:
         - postgrest
-      default_credential_class: read_only
-      service_role_forbidden: true
+      default_credential_class: admin
+      service_role_forbidden: false
       notes: >
-        Reads product data for inquiry product context. Read-only access to
-        approved product catalog projections only.
+        Phase 1 mail ingestion uses its server-side service_role to read the
+        product_variants/platform_accounts surface. No product_catalog writes.
 
   # ── skills:mercari-inquiry-follow-up ────────────────────────
   retailpulses/skills:mercari-inquiry-follow-up:
     inquiry_management:
       permitted_access_classes:
         - postgrest
-      default_credential_class: write_scoped
-      service_role_forbidden: true
+      default_credential_class: admin
+      service_role_forbidden: false
       notes: >
         Reads inquiries for follow-up eligibility. Writes follow_up_status and
         follow_up_sent_at. Database-write and external-send kill switches are
-        independent. Must use scoped credential, not service_role.
+        independent. Phase 1 uses a server-side service_role credential.

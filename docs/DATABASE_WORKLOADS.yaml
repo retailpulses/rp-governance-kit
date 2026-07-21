@@ -8,7 +8,7 @@
 # business repository's local sync inventory (docs/SYNC_JOB_INVENTORY.md).
 #
 # Version: 6
-# Last updated: 2026-07-19
+# Last updated: 2026-07-22
 # Governance ref: v1.6.0
 #
 # Governed by: retailpulses/rp-governance-kit
@@ -30,8 +30,10 @@
 #   triggers:                  structured trigger objects (see below)
 #   status:                    active | disabled | pending_approval
 #   kill_switch:
-#     method:                  worker_cancel | dashboard_session_terminate | sql_terminate_backend | deploy_rollback
+#     method:                  config_flag | process_signal | worker_cancel | dashboard_session_terminate | sql_terminate_backend | deploy_rollback
 #     identifier:              config key, cron name, or timer name that disables this workload
+#     fail_closed:             true for write workloads unless explicitly approved otherwise
+#   local_inventory_ref:       owner-repository path to the local workload inventory
 #
 # Extended safety_profile (required when any condition applies):
 #
@@ -132,15 +134,17 @@ workloads:
     domain: inquiry_management
     mode: write
     access_path: postgrest
-    credential_class: write_scoped
+    credential_class: service_role
     triggers:
       - type: cron
         expression: "*/30 * * * *"
         mode: full
     status: pending_approval
     kill_switch:
-      method: worker_cancel
+      method: config_flag
       identifier: INQUIRY_INGEST_WRITES_ENABLED
+      fail_closed: true
+      disabled_value: "false"
     safety_profile:
       category: syncs
       risk_level: high
@@ -151,17 +155,68 @@ workloads:
         - inquiries
         - inquiry_product_links
         - inquiry_knowledge_links
+      affected_domains:
+        - inquiry_management
+        - product_catalog
+      read_dependencies:
+        - product_catalog.product_variants
+        - product_catalog.platform_accounts
+      expected_volume_rows_min: 0
+      expected_volume_rows_max: 100
+      expected_request_count_min: 1
+      expected_request_count_max: 50
+      expected_runtime_seconds_max: 120
       concurrency_max: 2
       statement_timeout_ms: 15000
       max_retries: 3
       retry_strategy: exponential_backoff_with_jitter
+      batch_size_min: 1
+      batch_size_max: 100
+      cursor_strategy: zoho_cursor_with_bounded_in_clause_reads
+      source_repo: retailpulses/workers
+      deployed_from: ""
       request_budget:
         max_requests_per_invocation: 50
-        max_requests_per_1000_input_rows: 20
+        max_rows_per_invocation: 100
+        max_requests_per_1000_input_rows: 500
         bulk_fetch_strategy: IN-clause-batch
+        formula: "50 requests / (100 max input rows / 1000) = 500 requests per 1000 rows"
+      change_aware_writes:
+        enabled: true
+        freshness_strategy: source_message_identity
+        unchanged_write_ratio_target: 0.0
+      error_recording:
+        mechanism: cloudflare_worker_structured_logs
+        retention_days: 30
+        owner_repo: retailpulses/workers
+      rollout_gates:
+        dry_run_completed: false
+        dry_run_evidence_ref: "pending retailpulses/workers#20 Stage C evidence"
+        kill_switch_tested: false
+        canary_completed: false
+        canary_row_limit: 10
+      monitoring:
+        mechanism: cloudflare_worker_logs_and_cron_metrics
+        required_metrics:
+          - input_rows
+          - inserted_rows
+          - updated_rows
+          - error_count
+          - retry_budget_consumed
+          - statement_timeout_count
+        warning_thresholds:
+          error_count: 1
+          retry_budget_pct: 30
+        critical_thresholds:
+          error_rate_pct: 10
+          retry_budget_pct: 50
       rollback: "Set INQUIRY_INGEST_WRITES_ENABLED=false"
+    local_inventory_ref: docs/SYNC_JOB_INVENTORY.md
+    local_inventory_status: pending_in_owner_repo
     notes: >
-      Replaces Baserow table 886975 writes. Kill switch at batch boundaries.
+      Replaces Baserow table 886975 writes. Kill switch is evaluated fail-closed at
+      batch boundaries. retailpulses/workers PR #20 must add and populate the declared
+      local inventory path before this workload may activate.
 
   # ── Inquiry Automation Worker ───────────────────────────────────────────
   inquiry_automation_worker:
@@ -169,15 +224,17 @@ workloads:
     domain: inquiry_management
     mode: write
     access_path: postgrest
-    credential_class: write_scoped
+    credential_class: service_role
     triggers:
       - type: cron
         expression: "*/10 * * * *"
         mode: full
     status: pending_approval
     kill_switch:
-      method: worker_cancel
+      method: config_flag
       identifier: INQUIRY_AUTOMATION_WRITES_ENABLED
+      fail_closed: true
+      disabled_value: "false"
     safety_profile:
       category: agent_operations
       risk_level: high
@@ -187,15 +244,65 @@ workloads:
       affected_tables:
         - inquiries
         - inquiry_product_links
+      affected_domains:
+        - inquiry_management
+        - product_catalog
+      read_dependencies:
+        - product_catalog.product_variants
+        - product_catalog.platform_accounts
+      expected_volume_rows_min: 0
+      expected_volume_rows_max: 150
+      expected_request_count_min: 1
+      expected_request_count_max: 200
+      expected_runtime_seconds_max: 300
       concurrency_max: 1
       statement_timeout_ms: 30000
       max_retries: 3
       retry_strategy: exponential_backoff_with_jitter
+      batch_size_min: 1
+      batch_size_max: 50
+      cursor_strategy: durable_object_cursor_with_bounded_bulk_reads
+      source_repo: retailpulses/inquiry-automation
+      deployed_from: ""
       request_budget:
         max_requests_per_invocation: 200
-        max_requests_per_1000_input_rows: 40
-        bulk_fetch_strategy: pagination-cursor
+        max_rows_per_invocation: 50
+        max_requests_per_1000_input_rows: 4000
+        bulk_fetch_strategy: IN-clause-batch
+        formula: "200 requests / (50 max input rows / 1000) = 4000 requests per 1000 rows"
+      change_aware_writes:
+        enabled: true
+        freshness_strategy: workflow_state_transition
+        unchanged_write_ratio_target: 0.0
+      error_recording:
+        mechanism: cloudflare_worker_structured_logs
+        retention_days: 30
+        owner_repo: retailpulses/inquiry-automation
+      rollout_gates:
+        dry_run_completed: false
+        dry_run_evidence_ref: "pending retailpulses/inquiry-automation#35 integrated Stage C"
+        kill_switch_tested: false
+        canary_completed: false
+        canary_row_limit: 10
+      monitoring:
+        mechanism: cloudflare_worker_logs_durable_object_metrics_and_cron_metrics
+        required_metrics:
+          - input_rows
+          - classified_rows
+          - linked_rows
+          - drafted_rows
+          - error_count
+          - request_count
+          - retry_budget_consumed
+          - statement_timeout_count
+        warning_thresholds:
+          error_count: 1
+          retry_budget_pct: 30
+        critical_thresholds:
+          error_rate_pct: 10
+          retry_budget_pct: 50
       rollback: "Set INQUIRY_AUTOMATION_WRITES_ENABLED=false"
+    local_inventory_ref: docs/SYNC_JOB_INVENTORY.md
 
   # ── Inquiry Dashboard Mutations ─────────────────────────────────────────
   inquiry_dashboard_mutations:
@@ -203,64 +310,166 @@ workloads:
     domain: inquiry_management
     mode: write
     access_path: postgrest
-    credential_class: write_scoped
+    credential_class: service_role
     triggers:
       - type: manual
     status: pending_approval
     kill_switch:
       method: config_flag
       identifier: INQUIRY_DASHBOARD_MUTATIONS_ENABLED
+      fail_closed: true
+      disabled_value: "false"
     safety_profile:
       category: agent_operations
-      risk_level: medium
+      risk_level: high
       description: >
         Operator dashboard mutations (status changes, product links, drafts,
         copywriting, units). Protected by Cloudflare Access JWT validation.
-        Bounded interactive writes.
+        Bounded interactive writes. Classified High during the new-path rollout;
+        any later downgrade requires evidence and a separately reviewed declaration.
       affected_tables:
         - inquiries
         - inquiry_product_links
+      affected_domains:
+        - inquiry_management
+        - product_catalog
+      read_dependencies:
+        - product_catalog.product_variants
+        - product_catalog.platform_accounts
+      expected_volume_rows_min: 0
+      expected_volume_rows_max: 2
+      expected_request_count_min: 1
+      expected_request_count_max: 10
+      expected_runtime_seconds_max: 15
       concurrency_max: 5
       statement_timeout_ms: 10000
       max_retries: 0
       retry_strategy: none
+      batch_size_min: 1
+      batch_size_max: 1
+      cursor_strategy: bounded_single_mutation_with_cursor_paginated_search
+      source_repo: retailpulses/inquiry-automation
+      deployed_from: ""
       request_budget:
-        max_requests_per_invocation: 100
-        max_requests_per_1000_input_rows: 100
-        bulk_fetch_strategy: none
+        max_requests_per_invocation: 10
+        max_rows_per_invocation: 1
+        max_requests_per_1000_input_rows: 10000
+        bulk_fetch_strategy: pagination-cursor
+        formula: "10 requests / (1 max input row / 1000) = 10000 requests per 1000 rows"
+      change_aware_writes:
+        enabled: true
+        freshness_strategy: operator_submitted_field_diff
+        unchanged_write_ratio_target: 0.0
+      error_recording:
+        mechanism: cloudflare_pages_function_structured_logs
+        retention_days: 30
+        owner_repo: retailpulses/inquiry-automation
+      rollout_gates:
+        dry_run_completed: false
+        dry_run_evidence_ref: "pending retailpulses/inquiry-automation#35 integrated Stage C"
+        kill_switch_tested: false
+        canary_completed: false
+        canary_row_limit: 1
+      monitoring:
+        mechanism: cloudflare_pages_function_logs
+        required_metrics:
+          - mutation_count
+          - authorization_failure_count
+          - error_count
+          - statement_timeout_count
+        warning_thresholds:
+          error_count: 1
+        critical_thresholds:
+          authorization_bypass_count: 1
+          error_rate_pct: 10
       rollback: "Set INQUIRY_DASHBOARD_MUTATIONS_ENABLED=false"
+    local_inventory_ref: docs/SYNC_JOB_INVENTORY.md
 
   # ── Inquiry VPS Enrichment ──────────────────────────────────────────────
   inquiry_vps_enrichment:
     owner_repo: retailpulses/inquiry-automation
     domain: inquiry_management
     mode: write
-    access_path: direct_postgres
-    credential_class: write_scoped
+    access_path: postgrest
+    credential_class: service_role
     triggers:
       - type: manual
     status: pending_approval
     kill_switch:
       method: config_flag
       identifier: INQUIRY_ENRICHMENT_WRITES_ENABLED
+      fail_closed: true
+      disabled_value: "false"
+      secondary_method: process_signal
+      secondary_identifier: SIGINT_or_SIGTERM
     safety_profile:
       category: syncs
       risk_level: high
       description: >
         VPS browser enrichment extracts Mercari inquiry details (customer name,
-        product ID, variant name, message content) via Playwright and writes to
-        inquiries table. Uses direct Postgres from ConoHa VPS.
+        product ID, variant name, message content) via Playwright and writes through
+        PostgREST from ConoHa VPS using a write-scoped credential.
       affected_tables:
         - inquiries
+        - inquiry_product_links
+      affected_domains:
+        - inquiry_management
+        - product_catalog
+      read_dependencies:
+        - product_catalog.product_variants
+        - product_catalog.platform_accounts
+      expected_volume_rows_min: 0
+      expected_volume_rows_max: 100
+      expected_request_count_min: 1
+      expected_request_count_max: 100
+      expected_runtime_seconds_max: 900
       concurrency_max: 1
       statement_timeout_ms: 15000
       max_retries: 2
       retry_strategy: exponential_backoff_with_jitter
+      batch_size_min: 1
+      batch_size_max: 50
+      cursor_strategy: bounded_input_ids_with_in_clause_resolution
+      source_repo: retailpulses/inquiry-automation
+      deployed_from: ""
       request_budget:
         max_requests_per_invocation: 100
-        max_requests_per_1000_input_rows: 100
+        max_rows_per_invocation: 50
+        max_requests_per_1000_input_rows: 2000
         bulk_fetch_strategy: IN-clause-batch
+        formula: "100 requests / (50 max input rows / 1000) = 2000 requests per 1000 rows"
+      change_aware_writes:
+        enabled: true
+        freshness_strategy: extracted_field_diff
+        unchanged_write_ratio_target: 0.0
+      error_recording:
+        mechanism: structured_local_run_artifact
+        retention_days: 30
+        owner_repo: retailpulses/inquiry-automation
+      rollout_gates:
+        dry_run_completed: false
+        dry_run_evidence_ref: "pending retailpulses/inquiry-automation#35 integrated Stage C"
+        kill_switch_tested: false
+        canary_completed: false
+        canary_row_limit: 5
+      monitoring:
+        mechanism: vps_structured_run_report_and_postgrest_response_metrics
+        required_metrics:
+          - input_rows
+          - enriched_rows
+          - linked_rows
+          - skipped_unchanged_rows
+          - error_count
+          - retry_budget_consumed
+          - statement_timeout_count
+        warning_thresholds:
+          error_count: 1
+          retry_budget_pct: 30
+        critical_thresholds:
+          error_rate_pct: 10
+          retry_budget_pct: 50
       rollback: "Set INQUIRY_ENRICHMENT_WRITES_ENABLED=false"
+    local_inventory_ref: docs/SYNC_JOB_INVENTORY.md
 
   # ── Inquiry Follow-up ───────────────────────────────────────────────────
   inquiry_follow_up:
@@ -268,13 +477,16 @@ workloads:
     domain: inquiry_management
     mode: write
     access_path: postgrest
-    credential_class: write_scoped
+    credential_class: service_role
     triggers:
       - type: manual
     status: pending_approval
     kill_switch:
       method: config_flag
       identifier: INQUIRY_FOLLOWUP_DB_WRITES_ENABLED
+      fail_closed: true
+      disabled_value: "false"
+      independent_external_send_flag: INQUIRY_EXTERNAL_SEND_ENABLED
     safety_profile:
       category: agent_operations
       risk_level: high
@@ -284,15 +496,162 @@ workloads:
         INQUIRY_EXTERNAL_SEND_ENABLED kill switch.
       affected_tables:
         - inquiries
+      affected_domains:
+        - inquiry_management
+      expected_volume_rows_min: 0
+      expected_volume_rows_max: 50
+      expected_request_count_min: 1
+      expected_request_count_max: 100
+      expected_runtime_seconds_max: 900
       concurrency_max: 1
       statement_timeout_ms: 10000
       max_retries: 2
       retry_strategy: exponential_backoff_with_jitter
+      batch_size_min: 1
+      batch_size_max: 50
+      cursor_strategy: cursor_paginated_eligibility_read
+      source_repo: retailpulses/skills
+      deployed_from: ""
       request_budget:
-        max_requests_per_invocation: 50
-        max_requests_per_1000_input_rows: 50
+        max_requests_per_invocation: 100
+        max_rows_per_invocation: 50
+        max_requests_per_1000_input_rows: 2000
         bulk_fetch_strategy: pagination-cursor
+        formula: "100 requests / (50 max input rows / 1000) = 2000 requests per 1000 rows"
+      change_aware_writes:
+        enabled: true
+        freshness_strategy: follow_up_sent_at_idempotency_guard
+        unchanged_write_ratio_target: 0.0
+      error_recording:
+        mechanism: durable_skill_audit_report
+        retention_days: 30
+        owner_repo: retailpulses/skills
+      rollout_gates:
+        dry_run_completed: false
+        dry_run_evidence_ref: "pending clean replacement of retailpulses/skills#7"
+        kill_switch_tested: false
+        canary_completed: false
+        canary_row_limit: 1
+      monitoring:
+        mechanism: per_run_skill_audit_report
+        required_metrics:
+          - eligible_rows
+          - database_updates
+          - external_send_attempts
+          - external_send_successes
+          - error_count
+          - retry_budget_consumed
+        warning_thresholds:
+          error_count: 1
+        critical_thresholds:
+          duplicate_send_count: 1
+          unauthorized_send_count: 1
       rollback: "Set INQUIRY_FOLLOWUP_DB_WRITES_ENABLED=false"
+    local_inventory_ref: docs/SYNC_JOB_INVENTORY.md
+    local_inventory_status: requires_phase1_entry_update
+    notes: >
+      The skills repository has this inventory path, but its inquiry follow-up entry
+      must be updated to the canonical inquiry_management workload before activation.
+
+  # ── One-time Inquiry Historical Migration ───────────────────────────────
+  inquiry_historical_migration:
+    owner_repo: retailpulses/inquiry-automation
+    domain: inquiry_management
+    mode: write
+    access_path: postgrest
+    credential_class: service_role
+    triggers:
+      - type: manual
+        mode: one_time
+    status: pending_approval
+    depends_on:
+      - coordinated_RPagentOS_mercari_inquiries_retirement_PR
+    kill_switch:
+      method: process_signal
+      identifier: SIGINT_or_SIGTERM
+      fail_closed: true
+      write_enablement: explicit_confirm_flag_required
+    safety_profile:
+      category: backfills
+      risk_level: high
+      description: >
+        One-time import and consolidation of approved Baserow extracts plus the
+        legacy mercari_inquiries report into the canonical Phase 1 tables. Runtime
+        Baserow access is forbidden; only bounded migration tooling may read extracts.
+      affected_tables:
+        - inquiries
+        - inquiry_product_links
+        - knowledge_articles
+        - inquiry_knowledge_links
+      affected_domains:
+        - inquiry_management
+        - product_catalog
+      read_dependencies:
+        - product_catalog.product_variants
+        - product_catalog.platform_accounts
+        - legacy mercari_inquiries report
+      expected_volume_rows_min: 700
+      expected_volume_rows_max: 10000
+      expected_request_count_min: 20
+      expected_request_count_max: 1000
+      expected_runtime_seconds_max: 3600
+      concurrency_max: 1
+      statement_timeout_ms: 60000
+      max_retries: 3
+      retry_strategy: exponential_backoff_with_jitter
+      batch_size_min: 1
+      batch_size_max: 50
+      cursor_strategy: bounded_ndjson_stream_with_50_value_lookup_batches
+      source_repo: retailpulses/inquiry-automation
+      deployed_from: ""
+      request_budget:
+        max_requests_per_invocation: 1000
+        max_rows_per_invocation: 10000
+        max_requests_per_1000_input_rows: 100
+        bulk_fetch_strategy: IN-clause-batch
+        formula: "1000 requests / (10000 max input rows / 1000) = 100 requests per 1000 rows"
+      change_aware_writes:
+        enabled: true
+        freshness_strategy: idempotent_provenance_keys_and_field_diff_upserts
+        unchanged_write_ratio_target: 0.0
+      error_recording:
+        mechanism: machine_readable_reconciliation_and_error_artifacts
+        retention_days: 30
+        owner_repo: retailpulses/inquiry-automation
+      rollout_gates:
+        dry_run_completed: true
+        dry_run_evidence_ref: "retailpulses/inquiry-automation#35 local Stage C fixture replay"
+        kill_switch_tested: false
+        canary_completed: false
+        canary_row_limit: 10
+      monitoring:
+        mechanism: operator_console_plus_machine_readable_reconciliation_report
+        required_metrics:
+          - source_rows
+          - inserted_rows
+          - updated_rows
+          - skipped_rows
+          - field_mismatch_count
+          - error_count
+          - retry_budget_consumed
+          - statement_timeout_count
+        warning_thresholds:
+          error_count: 1
+          field_mismatch_count: 1
+          retry_budget_pct: 30
+        critical_thresholds:
+          reconciliation_failure_count: 1
+          retry_budget_pct: 50
+      rollback: >
+        Send SIGINT/SIGTERM, revoke the temporary migration credential, and retain
+        reconciliation evidence; destructive rollback requires separate approval.
+    local_inventory_ref: docs/SYNC_JOB_INVENTORY.md
+    notes: >
+      Local fixture replay is complete, but hosted extraction/import, kill-switch
+      test, canary, and production activation remain unapproved. The coordinated
+      RPagentOS migration must not rename public.mercari_inquiries or create its
+      temporary read-only compatibility view until this workload's canonical
+      completeness guard passes. The RPagentOS PR reference is pending.
 
   # ── CatalogSync Product Mirror ─────────────────────────────────────────
   catalogsync_product_mirror:
@@ -683,9 +1042,11 @@ workloads:
   # Extended safety_profile (required when: mode=write, high volume,
   #   frequent cron, privileged credential, destructive ops, large blast
   #   radius, or prior related incident):
-  #   category, risk_level, description, affected_tables,
+  #   category, risk_level, description, affected_tables, affected_domains,
+  #   expected_volume_rows_min/max, expected_request_count_min/max,
   #   concurrency_max, statement_timeout_ms, max_retries, retry_strategy,
-  #   request_budget, incident_ref, rollback
+  #   batch_size_min/max, cursor_strategy, request_budget with formula,
+  #   error_recording, rollout_gates, monitoring, incident_ref, rollback
   #
   # Optional fields for any entry:
   #   depends_on, excluded_windows, credential_contract,

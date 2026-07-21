@@ -5,7 +5,7 @@ Canonical organization-level database governance policy for Retailpulses reposit
 This document is maintained in `retailpulses/rp-governance-kit`. Repository-local files may add stricter rules but may not weaken central rules. If repo-local governance files and this central policy conflict, agents must stop and report the conflict instead of guessing.
 
 **Version:** v1.6.0
-**Last updated:** 2026-07-19
+**Last updated:** 2026-07-22
 
 ---
 
@@ -397,12 +397,19 @@ Connection pooling rules depend on the access path, not the client library:
 
 Every Medium or High workload must have at least one documented kill-switch mechanism:
 
+- **Fail-closed config flag**: a write-enable flag that defaults to disabled when
+  absent or malformed and is checked before the first write and at every batch boundary.
+- **Process signal**: SIGINT or SIGTERM for bounded operator-run tooling. The process
+  must stop scheduling new requests, finish or abort the in-flight unit safely, and exit
+  nonzero when completion was not reached.
 - **Worker-based**: cancel the Cloudflare Worker invocation (Wrangler dispatch namespace or durable object alarm cancel).
 - **Dashboard-based**: terminate the session from Supabase Dashboard → Database → Sessions.
 - **SQL-based**: `SELECT pg_terminate_backend(pid)` for the target session. Requires explicit production operational approval and precise target verification (pid, query, connection source) before execution. Do not terminate backends without confirming the target.
 - **Deploy-based**: a rollback deploy that removes the offending trigger, cron schedule, or Worker route.
 
-The kill-switch method must be documented in the workload declaration and tested (dry-run) before the workload goes live.
+The kill-switch method and fail-closed behavior must be documented in the workload
+declaration and tested (dry-run) before the workload goes live. A config flag that
+defaults to writes-enabled when missing is not a valid kill switch.
 
 ### 13.7 Approval Boundaries
 

@@ -51,7 +51,7 @@ if [[ -f "$OWNERSHIP" ]]; then
   fi
 
   # Check domain entries have required fields
-  for DOMAIN in ticketing product_catalog agent_os task_management project_management listing_intelligence listing_quality order_management catalog_sync; do
+  for DOMAIN in ticketing product_catalog agent_os task_management project_management listing_intelligence listing_quality order_management inquiry_management catalog_sync; do
     if grep -q "^  $DOMAIN:" "$OWNERSHIP"; then
       pass "Domain '$DOMAIN' declared"
     else
@@ -269,7 +269,7 @@ if [[ -f "$CAPABILITIES" ]]; then
 
   # Domain-first structure (v2): domains are top-level keys under capabilities
   # Each domain must have owner and consumers fields
-  for DOMAIN in product_catalog ticketing agent_os task_management project_management listing_intelligence listing_quality order_management catalog_sync; do
+  for DOMAIN in product_catalog ticketing agent_os task_management project_management listing_intelligence listing_quality order_management inquiry_management catalog_sync; do
     if grep -q "  $DOMAIN:" "$CAPABILITIES"; then
       pass "DATABASE_CAPABILITIES.yaml: domain '$DOMAIN' declared"
     else

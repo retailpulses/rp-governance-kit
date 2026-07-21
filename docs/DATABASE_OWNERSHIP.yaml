@@ -3,7 +3,7 @@
 # Canonical machine-readable domain ownership for Retailpulses shared Supabase.
 #
 # Version: 5
-# Last updated: 2026-07-17
+# Last updated: 2026-07-22
 # Governance ref: v1.5.0
 #
 # Governed by: retailpulses/rp-governance-kit
@@ -94,6 +94,8 @@ domains:
     consumers:
       - retailpulses/CatalogSync
       - retailpulses/ticket-handling
+      - retailpulses/inquiry-automation
+      - retailpulses/workers
       - retailpulses/skills:sync-giga-saved-products
       - retailpulses/skills:mercari-csv-listing
     objects:
@@ -299,35 +301,45 @@ domains:
     owner: retailpulses/inquiry-automation
     access_class: worker_only
     generated_types: exempt
-    cross_domain: true                # reads product_catalog.products for product linking
+    cross_domain: true                # UUID FKs and reads depend on product_catalog owner objects
     shared: false
     consumers:
       - retailpulses/workers          # mail-integration: inquiry create/update, product/knowledge reads
       - retailpulses/skills:mercari-inquiry-follow-up  # follow-up reads/writes
+      - retailpulses/RPagentOS        # temporary legacy mercari_inquiries compatibility consumer
     objects:
       tables:
         - inquiries
         - inquiry_product_links
         - inquiry_knowledge_links
         - knowledge_articles
-        - inquiry_statuses
-        - inquiry_types
-        - automation_statuses
-        - follow_up_statuses
       views:
         - inquiry_list_vw
         - inquiry_detail_vw
       functions:
-        - set_updated_at              # shared trigger function, created by this repo
+        - inquiry_management_set_updated_at
+      triggers:
+        - trg_inquiries_updated_at ON inquiries
+        - trg_knowledge_articles_updated_at ON knowledge_articles
       storage_buckets: []
     notes: >
       Phase 1 MVP — replaces Baserow tables 886975 (Inquiries), 886994 (Products for inquiry
-      product context), and 897440 (Knowledge). Product reads go through RPagentOS-owned
-      product_catalog views. Migrations: 20260721000000 (core schema), 20260721000001 (views).
+      product context), and 897440 (Knowledge). inquiry_product_links.product_variant_id is a
+      UUID foreign key to RPagentOS-owned product_catalog.product_variants; the optional
+      inquiries.platform_account_id UUID foreign key depends on product_catalog.platform_accounts.
+      Runtime product reads must use approved product_catalog projections over PostgREST.
+      Migrations: 20260721000000 (core schema), 20260721000001 (views).
       Worker, dashboard, VPS enrichment, mail-integration, and follow-up skill all consume
-      this domain. Access class is worker_only — service_role bypass with no browser-visible
-      RLS policies. Scoped PostgREST credentials required before production activation.
-      The retired Python pipeline is not a consumer.
+      this domain. Access class is worker_only: browser roles have no policies or grants,
+      and every runtime must use a server-side scoped PostgREST credential. Bootstrap
+      service_role grants do not constitute production runtime approval.
+      The retired Python pipeline is not a consumer. RPagentOS remains a temporary read-only
+      consumer while its owner migration retires/renames public.mercari_inquiries and, only
+      after the canonical completeness guard passes, creates a read-only compatibility view
+      at the legacy name. That compatibility object remains RPagentOS-owned and is not an
+      inquiry-automation schema object. Remove this temporary consumer access by 2026-10-31,
+      after dependent follow-up callers use the canonical contract and compatibility-view
+      query telemetry is zero for 30 consecutive days.
 
   # ── Catalog Synchronization (consumer capability domain) ──
   catalog_sync:

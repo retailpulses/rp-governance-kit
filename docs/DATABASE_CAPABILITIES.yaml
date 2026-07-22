@@ -3,7 +3,7 @@
 # Canonical capability declarations for Retailpulses shared Supabase.
 #
 # Version: 2
-# Last updated: 2026-07-17
+# Last updated: 2026-07-22
 # Governance ref: v1.5.0
 #
 # Governed by: retailpulses/rp-governance-kit
@@ -52,6 +52,22 @@ capabilities:
         write: false
         schema_change: false
         notes: Reads products and platform accounts for ticket association.
+
+      retailpulses/inquiry-automation:
+        read: true
+        write: false
+        schema_change: false
+        notes: >
+          Reads product_variants and platform_accounts for UUID resolution and
+          inquiry product context. No product_catalog writes.
+
+      retailpulses/workers:
+        read: true
+        write: false
+        schema_change: false
+        notes: >
+          Mail-integration reads the owner-approved product_variants/platform_accounts
+          surface for inquiry context and UUID resolution. No product_catalog writes.
 
       retailpulses/skills:sync-giga-saved-products:
         read: true
@@ -134,6 +150,39 @@ capabilities:
     domain_type: schema
     consumers: []
     # No external consumers. Order data is self-contained.
+
+  # ── Inquiry Management ─────────────────────────────────────
+  inquiry_management:
+    owner: retailpulses/inquiry-automation
+    domain_type: schema
+    consumers:
+      retailpulses/RPagentOS:
+        read: true
+        write: false
+        schema_change: false
+        notes: >
+          Temporary read-only consumer for RPagentOS-owned retirement/rename of
+          public.mercari_inquiries and its post-guard compatibility view. This does
+          not grant RPagentOS authority to change inquiry-owned schema objects.
+          Remove by 2026-10-31 after caller migration and 30 zero-query days.
+
+      retailpulses/workers:
+        read: true
+        write: true
+        schema_change: false
+        notes: >
+          Mail-integration creates/updates inquiries, reads knowledge articles and
+          product links for AI reply context. Phase 1 uses a server-side
+          service_role credential under the worker_only access model.
+
+      retailpulses/skills:mercari-inquiry-follow-up:
+        read: true
+        write: true
+        schema_change: false
+        notes: >
+          Reads inquiries eligible for follow-up. Writes follow_up_status and
+          follow_up_sent_at through a server-side Phase 1 service_role credential.
+          External sends require separate authorization.
 
   # ── Catalog Sync (consumer capability domain) ─────────────
   catalog_sync:

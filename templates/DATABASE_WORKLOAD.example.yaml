@@ -15,6 +15,7 @@ example_low_risk_read:
   kill_switch:
     method: deploy_rollback
     identifier: EXAMPLE_READ_ENABLED
+  local_inventory_ref: docs/SYNC_JOB_INVENTORY.md
   notes: >
     EXAMPLE — Replace with real workload data. Low-risk read-only workloads
     require only the standard declaration fields. No safety_profile needed.
@@ -29,8 +30,10 @@ example_high_risk_sync:
   trigger: "0 */6 * * *"
   status: pending_approval
   kill_switch:
-    method: deploy_rollback
+    method: config_flag
     identifier: EXAMPLE_SYNC_ENABLED
+    fail_closed: true
+    disabled_value: "false"
   safety_profile:
     category: syncs
     risk_level: high
@@ -38,6 +41,8 @@ example_high_risk_sync:
     affected_tables:
       - example_products
       - example_inventory
+    affected_domains:
+      - example
     expected_volume_rows_min: 50000
     expected_volume_rows_max: 200000
     expected_request_count_min: 200
@@ -53,14 +58,18 @@ example_high_risk_sync:
     deployed_from: ""
     request_budget:
       max_requests_per_invocation: 800
+      max_rows_per_invocation: 5000
       max_requests_per_1000_input_rows: 160
       bulk_fetch_strategy: bulk-endpoint
+      formula: "800 requests / (5000 max input rows / 1000) = 160 requests per 1000 rows"
     change_aware_writes:
       enabled: true
       freshness_strategy: run_level
       unchanged_write_ratio_target: 0.0
     rollout_gates:
       dry_run_completed: true
+      dry_run_evidence_ref: "replace with an Issue, CI artifact, or run report"
+      kill_switch_tested: true
       canary_completed: true
       canary_row_limit: 100
       healthy_cycles_required: 2
@@ -77,8 +86,13 @@ example_high_risk_sync:
         cpu_pct: 90
         timeout_rate_pct: 15
         retry_budget_pct: 50
+    error_recording:
+      mechanism: structured_run_artifact
+      retention_days: 30
+      owner_repo: retailpulses/example-repo
     incident_ref: ""
     rollback: "Deploy rollback"
+  local_inventory_ref: docs/SYNC_JOB_INVENTORY.md
   notes: >
     EXAMPLE — Replace with real workload data. High-risk sync workloads
     require the extended safety_profile with all rollout gates, monitoring

@@ -701,6 +701,103 @@ workloads:
       (6) deployed from a reviewed Git commit (no untracked VPS source).
 
   # ── CatalogSync Marketplace Projection API ────────────────────────────
+  catalogsync_giga_mercari_daily_publish:
+    owner_repo: retailpulses/CatalogSync
+    domain: product_catalog
+    mode: write
+    access_path: internal_api
+    credential_class: write_scoped
+    triggers:
+      - type: cron
+        schedule: "daily before 08:00 Asia/Tokyo"
+    status: active
+    kill_switch:
+      method: environment_flag
+      identifier: CATALOGSYNC_GIGA_MERCARI_PIPELINE_ENABLED
+    safety_profile:
+      category: scheduled_jobs
+      risk_level: high
+      description: >
+        Bounded GigaB2B saved-product import through RPagentOS owner APIs,
+        followed by scored four-shop Mercari UNOPENED admission and verified
+        listing-state writeback. Initial window is seven days; subsequent
+        windows use the last successful cutoff.
+      affected_tables:
+        - source_import_runs
+        - source_import_rows
+        - product_variants
+        - product_commercials
+        - platform_listings
+        - platform_listing_skus
+      concurrency_max: 1
+      statement_timeout_ms: 30000
+      max_retries: 2
+      retry_strategy: exponential_backoff
+      request_budget:
+        max_requests_per_invocation: 50
+        max_requests_per_1000_input_rows: 40
+        bulk_fetch_strategy: owner-api-batches-max-100
+      rollout_gates:
+        dry_run_completed: false
+        kill_switch_tested: false
+        canary_completed: false
+        canary_row_limit: 1
+      rollback: "Disable environment flag and remove cron; retain immutable prior VPS release"
+    local_inventory_ref: docs/SYNC_JOB_INVENTORY.md
+    approved_by: "Retailpulses owner; requested production build/deploy in retailpulses/CatalogSync#75"
+    approved_at: "2026-08-04"
+    last_reviewed: "2026-08-04"
+    notes: >
+      CatalogSync has no schema authority and no direct database credential.
+      RPagentOS owns validation, conflict detection, and database writes. Mercari
+      side effects are serialized with existing per-shop locks and use exact SKU
+      readback before owner state is accepted.
+
+  catalogsync_mercari_hourly_fifo_open:
+    owner_repo: retailpulses/CatalogSync
+    domain: product_catalog
+    mode: write
+    access_path: internal_api
+    credential_class: write_scoped
+    triggers:
+      - type: cron
+        schedule: "7 8-20 * * * Asia/Tokyo"
+    status: active
+    kill_switch:
+      method: environment_flag
+      identifier: CATALOGSYNC_MERCARI_AUTO_OPEN_ENABLED
+    safety_profile:
+      category: scheduled_jobs
+      risk_level: high
+      description: >
+        Opens at most one owner-queued Mercari listing per shop and hour using
+        persisted queued_at FIFO, then writes verified OPENED IDs/status through
+        the RPagentOS listing-state owner API.
+      affected_tables:
+        - platform_listings
+        - platform_listing_skus
+      concurrency_max: 1
+      statement_timeout_ms: 30000
+      max_retries: 2
+      retry_strategy: exponential_backoff
+      request_budget:
+        max_requests_per_invocation: 8
+        max_requests_per_1000_input_rows: 20
+        bulk_fetch_strategy: owner-api-batches-max-100
+      rollout_gates:
+        dry_run_completed: false
+        kill_switch_tested: false
+        canary_completed: false
+        canary_row_limit: 1
+      rollback: "Disable environment flag and restore prior immutable opener release"
+    local_inventory_ref: docs/SYNC_JOB_INVENTORY.md
+    approved_by: "Retailpulses owner; requested production build/deploy in retailpulses/CatalogSync#75"
+    approved_at: "2026-08-04"
+    last_reviewed: "2026-08-04"
+    notes: >
+      Direct Supabase reads were removed. Pending external-success/internal-write
+      uncertainty is durably reconciled before further queue progress.
+
   catalogsync_marketplace_projection_api_read:
     owner_repo: retailpulses/CatalogSync
     domain: product_catalog

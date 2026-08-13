@@ -83,6 +83,7 @@ Supporting documents:
 - [`docs/DATABASE_INCIDENT_RESPONSE.md`](docs/DATABASE_INCIDENT_RESPONSE.md) — incident response playbook
 
 After installation, each repository has:
+- `governance/local.yaml` — minimal repository-owned declaration of the selected governance ref, domains, workloads, and stricter local constraints; upgrades never overwrite an existing declaration
 - `docs/16_DATABASE_GOVERNANCE.md` — local reference pointing to the canonical policy
 - `docs/16_DATABASE_GOVERNANCE.local.md` — (repo-created) repository-specific declarations
 - `.github/workflows/database-governance.yml` — thin wrapper calling the central reusable workflow

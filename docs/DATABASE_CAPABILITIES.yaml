@@ -69,6 +69,16 @@ capabilities:
           Mail-integration reads the owner-approved product_variants/platform_accounts
           surface for inquiry context and UUID resolution. No product_catalog writes.
 
+      retailpulses/OrderMgmt:
+        read: true
+        write: true
+        schema_change: false
+        notes: >
+          Reads product context for the operator portal. Writes are restricted to
+          operator-initiated updates of product_commercials.manual_cost_price,
+          manual_presale_arrival_date, and presale_info_protect_until through the
+          RPagentOS owner API. No direct product_catalog credentials or other writes.
+
       retailpulses/skills:sync-giga-saved-products:
         read: true
         write: true

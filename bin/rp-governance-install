@@ -52,6 +52,7 @@ preflight() {
   for doc in 00_CURRENT_STATE.md 05_DECISION_LOG.md 16_DATABASE_GOVERNANCE.md 17_SYNC_WORKLOAD_GOVERNANCE.md SYNC_JOB_INVENTORY.template.md; do
     [[ -f "$KIT_DIR/templates/docs/$doc" ]] || die "Missing kit template: templates/docs/$doc"
   done
+  [[ -f "$KIT_DIR/templates/governance/local.yaml" ]] || die "Missing kit template: templates/governance/local.yaml"
 }
 
 parse_args() {
@@ -143,6 +144,7 @@ is_up_to_date() {
     "bin/rp-deploy-closeout"
     "bin/rp-repo-housekeeping"
     "docs/16_DATABASE_GOVERNANCE.md"
+    "governance/local.yaml"
   )
   if [[ "$WITH_SYNC_GOVERNANCE" == true ]]; then
     expected_files+=("docs/17_SYNC_WORKLOAD_GOVERNANCE.md")
@@ -162,7 +164,7 @@ is_up_to_date() {
 }
 
 copy_files() {
-  mkdir -p bin .github .github/workflows docs
+  mkdir -p bin .github .github/workflows docs governance
 
   local script
   for script in rp-issue-create rp-issue-audit rp-issue-work rp-issue-closeout rp-deploy-closeout rp-repo-housekeeping; do
@@ -179,6 +181,14 @@ copy_files() {
   fi
 
   sed "s/__REF__/$KIT_REF/g" "$KIT_DIR/templates/github/workflows/database-governance-wrapper.yml" > ".github/workflows/database-governance.yml"
+
+  # The local declaration is repository-owned. Install a ref-rendered starter
+  # only when absent; upgrades must never overwrite populated declarations.
+  if [[ ! -f "governance/local.yaml" ]]; then
+    sed "s/__GOVERNANCE_REF__/$KIT_REF/g" \
+      "$KIT_DIR/templates/governance/local.yaml" > "governance/local.yaml"
+    echo "Minimal governance/local.yaml installed. Populate repository-specific declarations."
+  fi
 
   local installed_at
   installed_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")

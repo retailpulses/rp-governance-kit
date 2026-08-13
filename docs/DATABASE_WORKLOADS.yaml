@@ -75,6 +75,52 @@ database: retailpulses_shared
 
 workloads:
 
+  # ── OrderMgmt operator product overrides ───────────────────────────────
+  ordermgmt_manual_product_overrides:
+    owner_repo: retailpulses/OrderMgmt
+    domain: product_catalog
+    mode: write
+    access_path: internal_api
+    credential_class: write_scoped
+    triggers:
+      - type: event
+    status: active
+    kill_switch:
+      method: deploy_rollback
+      identifier: ORDERMGMT_CATALOG_API_TOKEN
+      fail_closed: true
+    safety_profile:
+      category: agent_operations
+      risk_level: medium
+      description: >
+        An authenticated OrderMgmt portal operator updates up to three explicitly
+        allowed manual commercial overrides for one canonical SKU per request.
+        RPagentOS owns validation, identity resolution, audit evidence, and the
+        product_catalog write. There is no bulk or scheduled mode.
+      affected_tables:
+        - product_variants
+        - product_commercials
+      concurrency_max: 1
+      statement_timeout_ms: 5000
+      max_retries: 0
+      retry_strategy: none
+      request_budget:
+        max_requests_per_invocation: 1
+        max_requests_per_1000_input_rows: 1000
+        bulk_fetch_strategy: none
+      incident_ref: ""
+      rollback: "Roll back the OrderMgmt Portal deployment or remove ORDERMGMT_CATALOG_API_TOKEN from the owner API."
+    local_inventory_ref: docs/16_DATABASE_GOVERNANCE.local.md
+    source_repo: retailpulses/OrderMgmt
+    deployed_from: "RPagentOS@39d15cbbbaf71bf74e8a716301be41d995180819; OrderMgmt@6335d53fe855312432194e71b361f060dbbc8027"
+    approved_by: "retailpulses/rp-governance-kit#39"
+    approved_at: "2026-08-13"
+    last_reviewed: "2026-08-13"
+    notes: >
+      Issue retailpulses/OrderMgmt#174. The dedicated credential is server-side
+      only. Unknown fields, ambiguous SKU identities, missing commercial rows,
+      and owner audit failures fail closed.
+
   # ── Ticketing Seller Share Event API ──────────────────────────────────
   ticket_share_event_api:
     owner_repo: retailpulses/ticket-handling

@@ -89,6 +89,19 @@ access_policy:
         or use service_role. Credential scope is workload-specific and
         declared in DATABASE_WORKLOADS.yaml.
 
+  # ── OrderMgmt (consumer of product_catalog) ───────────────
+  retailpulses/OrderMgmt:
+    product_catalog:
+      permitted_access_classes:
+        - internal_api
+      default_credential_class: write_scoped
+      service_role_forbidden: true
+      notes: >
+        Portal reads and the three operator-controlled manual override writes use
+        the RPagentOS owner API with a dedicated server-side credential. OrderMgmt
+        must not hold a product_catalog service-role credential or write its tables
+        directly.
+
   # ── ticket-handling (consumer of multiple domains) ────────
   retailpulses/ticket-handling:
     product_catalog:

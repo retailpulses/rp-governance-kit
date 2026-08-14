@@ -113,13 +113,13 @@ workloads:
       rollout_gates:
         dry_run_completed: true
         kill_switch_tested: true
-        canary_completed: false
+        canary_completed: true
         canary_row_limit: 1
       incident_ref: ""
       rollback: "Disable COPY_IMPROVEMENT_ENABLED or the GitHub schedule; restore content through the revisioned lifecycle API from the audit snapshot."
     local_inventory_ref: docs/16_DATABASE_GOVERNANCE.local.md
     source_repo: retailpulses/RPagentOS
-    deployed_from: "RPagentOS@a5655d8"
+    deployed_from: "RPagentOS@088f5b1442bb92c60f643e75f5d4507f06b2f939"
     approved_by: "Retailpulses owner request in RPagentOS live-loop session"
     approved_at: "2026-08-14"
     last_reviewed: "2026-08-14"
@@ -128,7 +128,9 @@ workloads:
       Operator confirmation is optional. Hero, operator-authored, recently
       reviewed, evidence-poor, conflict-bearing, low-confidence, and
       non-improving listings fail closed without canonical mutation. This loop
-      does not publish to Rakuten RMS.
+      does not publish to Rakuten RMS. One-row canonical canary completed in
+      RPagentOS Actions run 31771261819: revision 1 to 2, audit persisted,
+      protected title unchanged, and no stale or failed write.
 
   # ── OrderMgmt operator product overrides ───────────────────────────────
   ordermgmt_manual_product_overrides:

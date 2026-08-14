@@ -1,0 +1,130 @@
+name: VPS Immutable Release
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: GitHub Environment used for the deployment approval gate
+        required: true
+        type: string
+      adapter_path:
+        description: Repo-owned deployment adapter implementing validate, deploy, and rollback
+        required: true
+        type: string
+      deploy_host:
+        required: true
+        type: string
+      deploy_user:
+        required: false
+        type: string
+        default: deploy
+      operation:
+        required: false
+        type: string
+        default: deploy
+      rollback_release:
+        required: false
+        type: string
+        default: ""
+    secrets:
+      VPS_DEPLOY_SSH_KEY:
+        required: true
+      VPS_KNOWN_HOSTS:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate deployment request
+        env:
+          OPERATION: ${{ inputs.operation }}
+          ROLLBACK_RELEASE: ${{ inputs.rollback_release }}
+        run: |
+          set -Eeuo pipefail
+          case "$OPERATION" in
+            deploy) ;;
+            rollback)
+              [[ -n "$ROLLBACK_RELEASE" ]] || {
+                echo "::error::rollback_release is required for rollback"
+                exit 1
+              }
+              ;;
+            *) echo "::error::operation must be deploy or rollback"; exit 1 ;;
+          esac
+          if [[ "${{ inputs.environment }}" == "production" && "${{ github.ref_name }}" != "main" ]]; then
+            echo "::error::Production VPS deployment is allowed only from main"
+            exit 1
+          fi
+
+  release:
+    needs: gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: ${{ inputs.environment }}
+    concurrency:
+      group: vps-${{ github.repository }}-${{ inputs.environment }}
+      cancel-in-progress: false
+    outputs:
+      deployed_target: ${{ steps.adapter.outputs.deployed_target }}
+      smoke_test_result: ${{ steps.adapter.outputs.smoke_test_result }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate adapter
+        env:
+          ADAPTER_PATH: ${{ inputs.adapter_path }}
+        run: |
+          set -Eeuo pipefail
+          [[ -f "$ADAPTER_PATH" ]] || { echo "::error::Missing adapter: $ADAPTER_PATH"; exit 1; }
+          bash -n "$ADAPTER_PATH"
+          bash "$ADAPTER_PATH" validate
+
+      - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.VPS_DEPLOY_SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          set -Eeuo pipefail
+          install -m 700 -d "$HOME/.ssh"
+          install -m 600 /dev/null "$HOME/.ssh/id_ed25519"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$HOME/.ssh/id_ed25519"
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+
+      - name: Run repository deployment adapter
+        id: adapter
+        env:
+          VPS_DEPLOY_HOST: ${{ inputs.deploy_host }}
+          VPS_DEPLOY_USER: ${{ inputs.deploy_user }}
+          DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
+          DEPLOY_SHA: ${{ github.sha }}
+          ROLLBACK_RELEASE: ${{ inputs.rollback_release }}
+        run: bash "${{ inputs.adapter_path }}" "${{ inputs.operation }}"
+
+      - name: Deployment summary
+        if: always()
+        run: |
+          {
+            echo "### VPS immutable release"
+            echo "- Repository: ${{ github.repository }}"
+            echo "- SHA: \`${{ github.sha }}\`"
+            echo "- Operation: ${{ inputs.operation }}"
+            echo "- Target: ${{ steps.adapter.outputs.deployed_target || 'not completed' }}"
+            echo "- Smoke test: ${{ steps.adapter.outputs.smoke_test_result || 'not completed' }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  closeout:
+    needs: release
+    if: always() && needs.release.result == 'success'
+    uses: retailpulses/rp-governance-kit/.github/workflows/post-deploy-governance.yml@main
+    with:
+      environment: ${{ inputs.environment }}
+      deployed_target: ${{ needs.release.outputs.deployed_target }}
+      smoke_test_result: ${{ needs.release.outputs.smoke_test_result }}
+      artifact: true
+    secrets: inherit

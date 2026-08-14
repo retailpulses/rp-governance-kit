@@ -17,7 +17,7 @@ Standardizes Issue-first development across Retailpulses repos:
 - **Engineering standards** - centralized templates for engineering principles, frontend, data access, platform dependencies, and Issue governance.
 - **Post-deploy governance** - deploy closeout reports and repo housekeeping via GitHub-native job summaries, PR/Issue comments, or artifacts.
 - **Docs impact tracking** - system changes without docs updates are flagged.
-- **Reusable CI** - central `governance-checks.yml`, `database-governance-checks.yml`, and `post-deploy-governance.yml` called by wrapper workflows.
+- **Reusable CI** - central governance checks, post-deploy closeout, and a two-level VPS immutable-release workflow called by repo-owned wrappers and deployment adapters.
 - **Database governance** - canonical organization-level database policy, domain ownership registry, migration naming/quality rules, access classes, RLS policy, hosted write safety, runtime workload safety (N+1 prohibition, change-aware writes, access path declaration, rollout gates, run-health independence), incident response playbook, and workload registry.
 - **Sync Workload Governance** - central invariants for sync and batch workloads, per-repo sync job inventory, and database risk registry for shared-DB workloads.
 - **Rollout tooling** - installer and upgrade scripts for lightweight repo adoption.
@@ -107,6 +107,7 @@ rp-governance-kit/
 ├── .github/workflows/
 │   ├── governance-checks.yml                 # Central reusable workflow (blocking)
 │   ├── post-deploy-governance.yml            # Central reusable workflow (non-blocking)
+│   ├── vps-immutable-release.yml              # Central VPS deployment orchestration
 │   └── database-governance-checks.yml        # Central reusable workflow (database)
 ├── docs/
 │   ├── ISSUE_GOVERNANCE.md                   # Issue-first governance policy
@@ -163,3 +164,7 @@ rp-governance-kit/
 - Skips archived repos.
 - Checks for existing governance PRs before opening duplicates.
 - Keeps installed repo governance lightweight and agent-friendly.
+
+## Change log
+
+- 2026-08-14: Added reusable VPS immutable-release orchestration for repo-owned deployment adapters.

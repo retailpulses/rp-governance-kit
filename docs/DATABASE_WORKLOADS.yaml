@@ -84,7 +84,7 @@ workloads:
     credential_class: service_role
     triggers:
       - type: cron
-        expression: "17 */6 * * * UTC"
+        expression: "17 */2 * * * UTC"
       - type: manual
     status: active
     kill_switch:

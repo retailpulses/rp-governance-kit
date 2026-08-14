@@ -75,6 +75,61 @@ database: retailpulses_shared
 
 workloads:
 
+  # ── RPagentOS Rakuten DeepSeek copy improvement ─────────────────────
+  rakuten_deepseek_copy_live_loop:
+    owner_repo: retailpulses/RPagentOS
+    domain: product_catalog
+    mode: write
+    access_path: internal_api
+    credential_class: service_role
+    triggers:
+      - type: cron
+        expression: "17 */6 * * * UTC"
+      - type: manual
+    status: active
+    kill_switch:
+      method: config_flag
+      identifier: COPY_IMPROVEMENT_ENABLED
+      fail_closed: true
+    safety_profile:
+      category: scheduled_jobs
+      risk_level: medium
+      description: >
+        Selects one low-quality Rakuten canonical listing per scheduled run,
+        requests preserve-first Japanese enrichment from DeepSeek, audits hard
+        claims against first-party evidence, and writes only a safe commercial
+        improvement through the revision-checked RPagentOS content endpoint.
+      affected_tables:
+        - platform_listings
+        - listing_qwen_reviews
+      concurrency_max: 1
+      statement_timeout_ms: 15000
+      max_retries: 1
+      retry_strategy: provider_json_repair_once
+      request_budget:
+        max_requests_per_invocation: 16
+        max_requests_per_1000_input_rows: 16000
+        bulk_fetch_strategy: bounded-bulk-reads-max-100-listings
+      rollout_gates:
+        dry_run_completed: true
+        kill_switch_tested: true
+        canary_completed: false
+        canary_row_limit: 1
+      incident_ref: ""
+      rollback: "Disable COPY_IMPROVEMENT_ENABLED or the GitHub schedule; restore content through the revisioned lifecycle API from the audit snapshot."
+    local_inventory_ref: docs/16_DATABASE_GOVERNANCE.local.md
+    source_repo: retailpulses/RPagentOS
+    deployed_from: "RPagentOS@a5655d8"
+    approved_by: "Retailpulses owner request in RPagentOS live-loop session"
+    approved_at: "2026-08-14"
+    last_reviewed: "2026-08-14"
+    notes: >
+      Scheduled batches are fixed at one; manual batches are capped at five.
+      Operator confirmation is optional. Hero, operator-authored, recently
+      reviewed, evidence-poor, conflict-bearing, low-confidence, and
+      non-improving listings fail closed without canonical mutation. This loop
+      does not publish to Rakuten RMS.
+
   # ── OrderMgmt operator product overrides ───────────────────────────────
   ordermgmt_manual_product_overrides:
     owner_repo: retailpulses/OrderMgmt

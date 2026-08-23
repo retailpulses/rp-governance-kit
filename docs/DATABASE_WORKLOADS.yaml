@@ -75,6 +75,62 @@ database: retailpulses_shared
 
 workloads:
 
+  # ── Ticketing Rakuten RMS R-Messe inquiry sync ────────────────
+  ticketing_rakuten_rmesse_sync:
+    owner_repo: retailpulses/ticket-handling
+    domain: ticketing
+    mode: write
+    access_path: postgrest
+    credential_class: service_role
+    triggers:
+      - type: cron
+        expression: "*/2 * * * * UTC"
+      - type: manual
+    status: active
+    kill_switch:
+      method: config_flag
+      identifier: RAKUTEN_RMESSE_INGESTION_MODE
+      fail_closed: true
+    safety_profile:
+      category: scheduled_jobs
+      risk_level: medium
+      description: >
+        Pulls official RMS InquiryManagementAPI inquiries through the fixed-egress
+        OrderMgmt relay, excludes inquiries without an explicit order number, and
+        idempotently creates or appends ticketing records with a ten-minute overlap.
+      affected_tables:
+        - rakuten_rmesse_inquiries
+        - rakuten_rmesse_sync_state
+        - tickets
+        - ticket_messages
+        - ticket_events
+      concurrency_max: 1
+      statement_timeout_ms: 15000
+      max_retries: 0
+      retry_strategy: none
+      request_budget:
+        max_requests_per_invocation: 4021
+        max_requests_per_1000_input_rows: 2011
+        bulk_fetch_strategy: pagination-cursor
+      rollout_gates:
+        dry_run_completed: true
+        kill_switch_tested: true
+        canary_completed: false
+        canary_row_limit: 0
+      incident_ref: "retailpulses/ticket-handling#192"
+      rollback: "Set RAKUTEN_RMESSE_INGESTION_MODE=off and deploy the prior reviewed Worker release; existing ticket rows remain auditable."
+    local_inventory_ref: docs/16_DATABASE_GOVERNANCE.local.md
+    source_repo: retailpulses/ticket-handling
+    deployed_from: "ticket-handling#193"
+    approved_by: "Retailpulses operator request in ticket-handling R-Messe session"
+    approved_at: "2026-08-23"
+    last_reviewed: "2026-08-23"
+    notes: >
+      Shadow mode performs official RMS reads but no database writes. Production
+      rollout requires two healthy shadow cycles before active mode. Outbound
+      customer replies have a separate fail-closed switch and are not part of
+      this scheduled workload.
+
   # ── RPagentOS Rakuten DeepSeek copy improvement ─────────────────────
   rakuten_deepseek_copy_live_loop:
     owner_repo: retailpulses/RPagentOS

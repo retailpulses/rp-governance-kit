@@ -65,6 +65,8 @@ domains:
         - inbound_ticket_messages
         - ticket_share_tokens
         - ticket_share_attachments
+        - rakuten_rmesse_inquiries
+        - rakuten_rmesse_sync_state
       views: []
       functions:
         - generate_ticket_number
@@ -77,6 +79,7 @@ domains:
         - revoke_ticket_share
         - resolve_ticket_share
         - authorize_ticket_share_attachment
+        - ingest_rakuten_rmesse_inquiry
       storage_buckets: []
     notes: >
       Mixed migration naming: 0001/0002 (grandfathered sequential) + timestamp-based.

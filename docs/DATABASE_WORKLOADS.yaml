@@ -7,8 +7,8 @@
 # batch sizes, marketplace mapping, and monitoring thresholds are owned by the
 # business repository's local sync inventory (docs/SYNC_JOB_INVENTORY.md).
 #
-# Version: 6
-# Last updated: 2026-07-22
+# Version: 7
+# Last updated: 2026-08-24
 # Governance ref: v1.6.0
 #
 # Governed by: retailpulses/rp-governance-kit
@@ -187,6 +187,56 @@ workloads:
       does not publish to Rakuten RMS. One-row canonical canary completed in
       RPagentOS Actions run 31771261819: revision 1 to 2, audit persisted,
       protected title unchanged, and no stale or failed write.
+
+  # ── RPagentOS manual account metrics portal entry ───────────────────
+  account_metrics_manual_portal_entry:
+    owner_repo: retailpulses/RPagentOS
+    domain: product_catalog
+    mode: write
+    access_path: internal_api
+    credential_class: service_role
+    triggers:
+      - type: manual
+    status: active
+    kill_switch:
+      method: deploy_rollback
+      identifier: functions/api/account-metrics.ts:onRequestPost
+      fail_closed: true
+    safety_profile:
+      category: agent_operations
+      risk_level: medium
+      description: >
+        Lets a manager insert one validated monthly marketplace account metric
+        row from the RPagentOS metrics page. The Worker verifies the active
+        account, rejects every existing account/month, and exposes no update,
+        delete, overwrite, bulk, scheduled, or retry path.
+      affected_tables:
+        - platform_accounts
+        - platform_account_monthly_metrics
+      concurrency_max: 1
+      statement_timeout_ms: 30000
+      max_retries: 0
+      retry_strategy: none
+      request_budget:
+        max_requests_per_invocation: 3
+        max_requests_per_1000_input_rows: 3000
+        bulk_fetch_strategy: none
+      incident_ref: ""
+      rollback: "Disable or remove the account-metrics POST handler and redeploy; retain submitted rows for audit unless an explicit owner-reviewed correction targets exact row IDs."
+    local_inventory_ref: docs/16_DATABASE_GOVERNANCE.local.md
+    source_repo: retailpulses/RPagentOS
+    deployed_from: "retailpulses/RPagentOS#86"
+    approved_by: "Retailpulses owner request in RPagentOS#86"
+    approved_at: "2026-08-24"
+    last_reviewed: "2026-08-24"
+    notes: >
+      The browser never receives a Supabase credential; service_role remains in
+      the server-side Pages Function. The owner explicitly deferred portal-wide
+      authentication, so POST is temporarily unauthenticated and accepts only
+      application/json with strict field, type, range, date, active-account,
+      and account/month conflict validation. RPagentOS#85 tracks retirement of
+      this exception and complete portal authorization. Governance registration
+      evidence: rp-governance-kit#51.
 
   # ── OrderMgmt operator product overrides ───────────────────────────────
   ordermgmt_manual_product_overrides:

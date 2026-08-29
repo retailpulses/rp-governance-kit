@@ -52,6 +52,7 @@ jobs:
           BODY="$RUNNER_TEMP/portal-body"
           RESPONSE_HEADERS="$RUNNER_TEMP/portal-headers"
           HEADERS=(
+            -H "User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/128.0 Safari/537.36 Homesbliss-Portal-Acceptance/1.0"
             -H "CF-Access-Client-Id: $ACCESS_CLIENT_ID"
             -H "CF-Access-Client-Secret: $ACCESS_CLIENT_SECRET"
           )
@@ -93,6 +94,7 @@ jobs:
           PORTAL_ORIGIN="${PORTAL_ORIGIN%/}"
           BODY="$RUNNER_TEMP/ticket-health.json"
           STATUS=$(curl -sS --max-time 30 -o "$BODY" -w '%{http_code}' \
+            -H "User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/128.0 Safari/537.36 Homesbliss-Portal-Acceptance/1.0" \
             -H "CF-Access-Client-Id: $ACCESS_CLIENT_ID" \
             -H "CF-Access-Client-Secret: $ACCESS_CLIENT_SECRET" \
             "$PORTAL_ORIGIN/api/ticketing/health")

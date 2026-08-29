@@ -1,0 +1,109 @@
+name: Portal Acceptance
+
+on:
+  workflow_call:
+    inputs:
+      application:
+        description: Canonical Ops Portal application id
+        required: true
+        type: string
+      portal_origin:
+        description: Canonical operator portal origin
+        required: false
+        type: string
+        default: https://ops.homesbliss.net
+    secrets:
+      CF_ACCESS_CLIENT_ID:
+        required: true
+      CF_ACCESS_CLIENT_SECRET:
+        required: true
+
+jobs:
+  canonical-portal-acceptance:
+    name: Canonical Portal Acceptance
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate application input
+        env:
+          APPLICATION: ${{ inputs.application }}
+        run: |
+          case "$APPLICATION" in
+            inquiry|tickets|order) ;;
+            *) echo "::error::Unsupported Portal application: $APPLICATION"; exit 1 ;;
+          esac
+
+      - name: Verify exact operator route
+        env:
+          APPLICATION: ${{ inputs.application }}
+          PORTAL_ORIGIN: ${{ inputs.portal_origin }}
+          ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+        run: |
+          set -euo pipefail
+          PORTAL_ORIGIN="${PORTAL_ORIGIN%/}"
+          BODY="$RUNNER_TEMP/portal-body"
+          HEADERS=(
+            -H "CF-Access-Client-Id: $ACCESS_CLIENT_ID"
+            -H "CF-Access-Client-Secret: $ACCESS_CLIENT_SECRET"
+          )
+
+          STATUS=$(curl -sS --max-time 30 -o "$BODY" -w '%{http_code}' \
+            "${HEADERS[@]}" "$PORTAL_ORIGIN/$APPLICATION/")
+          if [ "$STATUS" != "200" ]; then
+            echo "::error::$PORTAL_ORIGIN/$APPLICATION/ returned HTTP $STATUS instead of 200"
+            exit 1
+          fi
+          grep -q 'aria-label="Operations portals"' "$BODY" || {
+            echo "::error::Shared Ops navigation was not present on /$APPLICATION/."
+            exit 1
+          }
+          grep -qi '<html' "$BODY" || {
+            echo "::error::/$APPLICATION/ did not return an HTML application shell."
+            exit 1
+          }
+
+          case "$APPLICATION" in
+            inquiry) PREFIX='/inquiry/' ;;
+            tickets) PREFIX='/tickets/' ;;
+            order) PREFIX='/order/' ;;
+          esac
+          grep -Eq "(href|src)=[\"']${PREFIX}" "$BODY" || {
+            echo "::error::/$APPLICATION/ did not expose a root-relative asset rewritten under $PREFIX."
+            exit 1
+          }
+
+      - name: Verify Ticket Share capability contract
+        if: inputs.application == 'tickets'
+        env:
+          PORTAL_ORIGIN: ${{ inputs.portal_origin }}
+          ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+        run: |
+          set -euo pipefail
+          PORTAL_ORIGIN="${PORTAL_ORIGIN%/}"
+          BODY="$RUNNER_TEMP/ticket-health.json"
+          STATUS=$(curl -sS --max-time 30 -o "$BODY" -w '%{http_code}' \
+            -H "CF-Access-Client-Id: $ACCESS_CLIENT_ID" \
+            -H "CF-Access-Client-Secret: $ACCESS_CLIENT_SECRET" \
+            "$PORTAL_ORIGIN/api/ticketing/health")
+          if [ "$STATUS" != "200" ]; then
+            echo "::error::Portal Ticket capability endpoint returned HTTP $STATUS instead of 200."
+            exit 1
+          fi
+          jq -e '.status == "ok" and .ticket_shares_enabled == true' "$BODY" >/dev/null || {
+            echo "::error::Ticket Share is not enabled through the canonical Portal API namespace."
+            exit 1
+          }
+
+      - name: Record acceptance evidence
+        run: |
+          {
+            echo "### Canonical Portal Acceptance"
+            echo ""
+            echo "| Field | Value |"
+            echo "|---|---|"
+            echo "| Application | \`${{ inputs.application }}\` |"
+            echo "| Exact route | \`${{ inputs.portal_origin }}/${{ inputs.application }}/\` |"
+            echo "| Source commit | \`${{ github.sha }}\` |"
+            echo "| Result | passed |"
+          } >> "$GITHUB_STEP_SUMMARY"

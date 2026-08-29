@@ -13,14 +13,12 @@ on:
         type: string
         default: https://ops.homesbliss.net
       relay_origin:
-        description: Cloudflare-internal relay used to avoid hosted-runner bot challenges
+        description: ConoHa VPS relay used for canonical Portal acceptance
         required: false
         type: string
-        default: https://ops-portal-acceptance-relay.jim-yang-3c5.workers.dev
+        default: https://seller-share.homesbliss.net/ops-portal-acceptance
     secrets:
-      CF_ACCESS_CLIENT_ID:
-        required: true
-      CF_ACCESS_CLIENT_SECRET:
+      PORTAL_ACCEPTANCE_RELAY_TOKEN:
         required: true
 
 jobs:
@@ -39,82 +37,73 @@ jobs:
 
       - name: Verify exact operator route
         env:
-          APPLICATION: ${{ inputs.application }}
           PORTAL_ORIGIN: ${{ inputs.portal_origin }}
           RELAY_ORIGIN: ${{ inputs.relay_origin }}
-          ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
-          ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+          RELAY_TOKEN: ${{ secrets.PORTAL_ACCEPTANCE_RELAY_TOKEN }}
         run: |
           set -euo pipefail
-          if [[ ! "$ACCESS_CLIENT_ID" =~ ^[[:xdigit:]]{32}\.access$ ]]; then
-            echo "::error::CF_ACCESS_CLIENT_ID has an invalid shape (length ${#ACCESS_CLIENT_ID})."
-            exit 1
-          fi
-          if [[ ! "$ACCESS_CLIENT_SECRET" =~ ^cfast_[A-Za-z0-9_-]+$ ]]; then
-            echo "::error::CF_ACCESS_CLIENT_SECRET has an invalid shape (length ${#ACCESS_CLIENT_SECRET})."
+          if [ "${#RELAY_TOKEN}" -lt 32 ]; then
+            echo "::error::PORTAL_ACCEPTANCE_RELAY_TOKEN is missing or too short."
             exit 1
           fi
           PORTAL_ORIGIN="${PORTAL_ORIGIN%/}"
           RELAY_ORIGIN="${RELAY_ORIGIN%/}"
-          BODY="$RUNNER_TEMP/portal-body"
-          RESPONSE_HEADERS="$RUNNER_TEMP/portal-headers"
           HEADERS=(
             -H "User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/128.0 Safari/537.36 Homesbliss-Portal-Acceptance/1.0"
-            -H "CF-Access-Client-Id: $ACCESS_CLIENT_ID"
-            -H "CF-Access-Client-Secret: $ACCESS_CLIENT_SECRET"
+            -H "Authorization: Bearer $RELAY_TOKEN"
           )
 
-          STATUS=$(curl -sS --max-time 30 -D "$RESPONSE_HEADERS" -o "$BODY" -w '%{http_code}' \
-            "${HEADERS[@]}" "$RELAY_ORIGIN/accept?target=$APPLICATION")
-          if [ "$STATUS" != "200" ]; then
-            echo "::error::$PORTAL_ORIGIN/$APPLICATION/ returned HTTP $STATUS instead of 200"
-            grep -Ei '^(server|cf-ray|cf-mitigated|location):' "$RESPONSE_HEADERS" || true
-            exit 1
-          fi
-          grep -qi "^x-portal-acceptance-target: /$APPLICATION/" "$RESPONSE_HEADERS" || {
-            echo "::error::Acceptance relay did not confirm the expected /$APPLICATION/ target."
-            exit 1
-          }
-          grep -q 'aria-label="Operations portals"' "$BODY" || {
-            echo "::error::Shared Ops navigation was not present on /$APPLICATION/."
-            exit 1
-          }
-          grep -qi '<html' "$BODY" || {
-            echo "::error::/$APPLICATION/ did not return an HTML application shell."
-            exit 1
-          }
-
-          case "$APPLICATION" in
-            inquiry) PREFIX='/inquiry/' ;;
-            tickets) PREFIX='/tickets/' ;;
-            order) PREFIX='/order/' ;;
-          esac
-          grep -Eq "(href|src)=[\"']${PREFIX}" "$BODY" || {
-            echo "::error::/$APPLICATION/ did not expose a root-relative asset rewritten under $PREFIX."
-            exit 1
-          }
+          for APPLICATION in inquiry tickets order; do
+            BODY="$RUNNER_TEMP/portal-$APPLICATION-body"
+            RESPONSE_HEADERS="$RUNNER_TEMP/portal-$APPLICATION-headers"
+            STATUS=$(curl -sS --max-time 30 -D "$RESPONSE_HEADERS" -o "$BODY" -w '%{http_code}' \
+              "${HEADERS[@]}" "$RELAY_ORIGIN/accept?target=$APPLICATION")
+            if [ "$STATUS" != "200" ]; then
+              echo "::error::$PORTAL_ORIGIN/$APPLICATION/ returned HTTP $STATUS instead of 200"
+              grep -Ei '^(server|cf-ray|cf-mitigated|location):' "$RESPONSE_HEADERS" || true
+              exit 1
+            fi
+            grep -qi "^x-portal-acceptance-target: /$APPLICATION/" "$RESPONSE_HEADERS" || {
+              echo "::error::Acceptance relay did not confirm the expected /$APPLICATION/ target."
+              exit 1
+            }
+            grep -q 'aria-label="Operations portals"' "$BODY" || {
+              echo "::error::Shared Ops navigation was not present on /$APPLICATION/."
+              exit 1
+            }
+            grep -qi '<html' "$BODY" || {
+              echo "::error::/$APPLICATION/ did not return an HTML application shell."
+              exit 1
+            }
+            grep -Eq "(href|src)=[\"']/$APPLICATION/assets/" "$BODY" || {
+              echo "::error::/$APPLICATION/ did not expose an asset under /$APPLICATION/assets/."
+              exit 1
+            }
+          done
 
       - name: Verify Ticket Share capability contract
-        if: inputs.application == 'tickets'
         env:
           PORTAL_ORIGIN: ${{ inputs.portal_origin }}
           RELAY_ORIGIN: ${{ inputs.relay_origin }}
-          ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
-          ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+          RELAY_TOKEN: ${{ secrets.PORTAL_ACCEPTANCE_RELAY_TOKEN }}
         run: |
           set -euo pipefail
           PORTAL_ORIGIN="${PORTAL_ORIGIN%/}"
           RELAY_ORIGIN="${RELAY_ORIGIN%/}"
           BODY="$RUNNER_TEMP/ticket-health.json"
-          STATUS=$(curl -sS --max-time 30 -o "$BODY" -w '%{http_code}' \
+          RESPONSE_HEADERS="$RUNNER_TEMP/ticket-health-headers"
+          STATUS=$(curl -sS --max-time 30 -D "$RESPONSE_HEADERS" -o "$BODY" -w '%{http_code}' \
             -H "User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/128.0 Safari/537.36 Homesbliss-Portal-Acceptance/1.0" \
-            -H "CF-Access-Client-Id: $ACCESS_CLIENT_ID" \
-            -H "CF-Access-Client-Secret: $ACCESS_CLIENT_SECRET" \
+            -H "Authorization: Bearer $RELAY_TOKEN" \
             "$RELAY_ORIGIN/accept?target=ticket-health")
           if [ "$STATUS" != "200" ]; then
             echo "::error::Portal Ticket capability endpoint returned HTTP $STATUS instead of 200."
             exit 1
           fi
+          grep -qi '^x-portal-acceptance-target: /api/ticketing/health' "$RESPONSE_HEADERS" || {
+            echo "::error::Acceptance relay did not confirm the Ticket health target."
+            exit 1
+          }
           jq -e '.status == "ok" and .ticket_shares_enabled == true' "$BODY" >/dev/null || {
             echo "::error::Ticket Share is not enabled through the canonical Portal API namespace."
             exit 1

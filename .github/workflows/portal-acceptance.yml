@@ -40,17 +40,27 @@ jobs:
           ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
         run: |
           set -euo pipefail
+          if [[ ! "$ACCESS_CLIENT_ID" =~ ^[[:xdigit:]]{32}\.access$ ]]; then
+            echo "::error::CF_ACCESS_CLIENT_ID has an invalid shape (length ${#ACCESS_CLIENT_ID})."
+            exit 1
+          fi
+          if [[ ! "$ACCESS_CLIENT_SECRET" =~ ^cfast_[A-Za-z0-9_-]+$ ]]; then
+            echo "::error::CF_ACCESS_CLIENT_SECRET has an invalid shape (length ${#ACCESS_CLIENT_SECRET})."
+            exit 1
+          fi
           PORTAL_ORIGIN="${PORTAL_ORIGIN%/}"
           BODY="$RUNNER_TEMP/portal-body"
+          RESPONSE_HEADERS="$RUNNER_TEMP/portal-headers"
           HEADERS=(
             -H "CF-Access-Client-Id: $ACCESS_CLIENT_ID"
             -H "CF-Access-Client-Secret: $ACCESS_CLIENT_SECRET"
           )
 
-          STATUS=$(curl -sS --max-time 30 -o "$BODY" -w '%{http_code}' \
+          STATUS=$(curl -sS --max-time 30 -D "$RESPONSE_HEADERS" -o "$BODY" -w '%{http_code}' \
             "${HEADERS[@]}" "$PORTAL_ORIGIN/$APPLICATION/")
           if [ "$STATUS" != "200" ]; then
             echo "::error::$PORTAL_ORIGIN/$APPLICATION/ returned HTTP $STATUS instead of 200"
+            grep -Ei '^(server|cf-ray|cf-mitigated|location):' "$RESPONSE_HEADERS" || true
             exit 1
           fi
           grep -q 'aria-label="Operations portals"' "$BODY" || {

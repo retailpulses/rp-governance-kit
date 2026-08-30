@@ -972,6 +972,58 @@ workloads:
       side effects are serialized with existing per-shop locks and use exact SKU
       readback before owner state is accepted.
 
+  catalogsync_mercari_weekly_mapping_reconciliation:
+    owner_repo: retailpulses/CatalogSync
+    domain: product_catalog
+    mode: write
+    access_path: internal_api
+    credential_class: write_scoped
+    triggers:
+      - type: cron
+        schedule: "weekly gate inside existing full sync; Monday 03:00-04:00 Asia/Tokyo staggered by shop"
+    status: active
+    kill_switch:
+      method: environment_flag
+      identifier: CATALOGSYNC_MERCARI_MAPPING_RECONCILIATION_ENABLED
+    safety_profile:
+      category: scheduled_jobs
+      risk_level: medium
+      description: >
+        Reuses each shop full-sync Mercari OPENED snapshot to detect live SKU
+        identities missing from owner mappings. Deterministic candidates are
+        repaired only through the RPagentOS listing-state owner API; the weekly
+        phase performs no Mercari mutation and adds no Mercari API request.
+      affected_tables:
+        - platform_listings
+        - platform_listing_skus
+      concurrency_max: 1
+      statement_timeout_ms: 30000
+      max_retries: 2
+      retry_strategy: exponential_backoff
+      request_budget:
+        max_requests_per_invocation: 3
+        max_requests_per_1000_input_rows: 120
+        bulk_fetch_strategy: owner-api-batches-max-100
+      rollout_gates:
+        dry_run_completed: false
+        kill_switch_tested: false
+        canary_completed: false
+        canary_row_limit: 1
+      rollback: >
+        Disable CATALOGSYNC_MERCARI_MAPPING_REPAIR_ENABLED to retain detect-only,
+        or disable CATALOGSYNC_MERCARI_MAPPING_RECONCILIATION_ENABLED entirely.
+    local_inventory_ref: docs/SYNC_JOB_INVENTORY.md
+    approved_by: "Retailpulses owner; autonomous weekly reconciliation requested in retailpulses/CatalogSync#148"
+    approved_at: "2026-08-30"
+    last_reviewed: "2026-08-30"
+    notes: >
+      Automatic repair cap is 25 rows per shop/run. Idempotency binds shop,
+      item code, Mercari product ID and variant ID. Unknown, ambiguous, inactive,
+      blank-SKU and conflicting identities are quarantined. Exact owner projection
+      readback is required before success; failure is isolated from existing
+      quantity reconciliation and retries cool down for six hours with no more
+      than three attempts per ISO week.
+
   catalogsync_mercari_hourly_fifo_open:
     owner_repo: retailpulses/CatalogSync
     domain: product_catalog

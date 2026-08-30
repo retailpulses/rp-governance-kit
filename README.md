@@ -19,7 +19,7 @@ Standardizes Issue-first development across Retailpulses repos:
 - **Docs impact tracking** - system changes without docs updates are flagged.
 - **Reusable CI** - central governance checks, post-deploy closeout, and a two-level VPS immutable-release workflow called by repo-owned wrappers and deployment adapters.
 - **Portal release governance** - canonical `ops.homesbliss.net` route acceptance for Inquiry, Tickets, and Orders, including operator capability assertions.
-- **Database governance** - canonical organization-level database policy, domain ownership registry, migration naming/quality rules, access classes, RLS policy, hosted write safety, runtime workload safety (N+1 prohibition, change-aware writes, access path declaration, rollout gates, run-health independence), incident response playbook, and workload registry.
+- **Database governance** - canonical organization-level database policy, domain ownership registry, migration naming/quality rules, access classes, RLS policy, hosted write safety, runtime workload safety (N+1 prohibition, change-aware writes, egress budgets and client attribution, access path declaration, rollout gates, run-health independence), incident response playbook, and workload registry.
 - **Sync Workload Governance** - central invariants for sync and batch workloads, per-repo sync job inventory, and database risk registry for shared-DB workloads.
 - **Rollout tooling** - installer and upgrade scripts for lightweight repo adoption.
 

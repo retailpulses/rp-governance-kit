@@ -212,6 +212,14 @@ if [[ -f "$WORKLOADS" ]]; then
   else
     pass "Monitoring thresholds intentionally excluded (moved to local inventory per v6 re-scope)"
   fi
+
+  if grep -q 'egress_contract:' "$WORKLOADS" && \
+     grep -q 'max_response_bytes_per_invocation' "$WORKLOADS" && \
+     grep -q 'client_identity' "$WORKLOADS"; then
+    pass "Egress contract fields documented"
+  else
+    fail "Egress contract field documentation missing"
+  fi
 else
   fail "DATABASE_WORKLOADS.yaml not found"
 fi

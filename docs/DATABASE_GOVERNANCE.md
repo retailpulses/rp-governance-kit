@@ -4,8 +4,8 @@ Canonical organization-level database governance policy for Retailpulses reposit
 
 This document is maintained in `retailpulses/rp-governance-kit`. Repository-local files may add stricter rules but may not weaken central rules. If repo-local governance files and this central policy conflict, agents must stop and report the conflict instead of guessing.
 
-**Version:** v1.6.0
-**Last updated:** 2026-07-22
+**Version:** v1.7.0
+**Last updated:** 2026-08-30
 
 ---
 
@@ -571,6 +571,40 @@ The finalization and health assessment of the current run must be independent fr
 ### Status: PASS / FAIL (based on this run only)
 ```
 
+### 13.15 Egress and Read-Amplification Control
+
+`MUST BEFORE PRODUCTION` for scheduled, bulk, high-volume, or prior-incident
+read workloads.
+
+Request counts are not a proxy for egress: one wide response can cost more than
+thousands of narrow requests. Each qualifying workload must declare an
+`egress_contract` in `docs/DATABASE_WORKLOADS.yaml` with:
+
+- a stable `client_identity` sent as `x-client-info`, `User-Agent`, or database
+  `application_name`, including repository, workload ID, and release where the
+  client supports it;
+- `projection_policy: explicit_columns`, or a time-bounded
+  `wildcard_justification` with owner and review date;
+- a `pagination_strategy` and durable `incremental_cursor` when correctness
+  permits; offset scans are not an incremental strategy;
+- `max_response_bytes_per_invocation` and
+  `max_response_bytes_per_day`, measured client-side when platform logs do not
+  expose reliable response sizes; and
+- warning and critical percentages for both per-invocation and daily byte
+  budgets.
+
+Recurring `select *`, `select=*`, or equivalent wildcard projections are
+prohibited unless the workload is bounded by a small row limit and the declared
+justification explains why every column is required. New scheduled full-table
+polling must fail closed until the owning repository records a measured
+baseline, an incremental/cursor decision, and a kill switch.
+
+Per-run evidence must include request count, rows returned, response bytes,
+selected projection, cursor range, runtime, retries, workload identity, and
+release SHA. Organization-level billing usage is the final platform acceptance
+signal; client-side measurements provide attribution, not a substitute for the
+billing meter.
+
 ## 14. Resource Management
 
 `MUST BEFORE PRODUCTION`
@@ -606,10 +640,14 @@ Workloads must define monitoring thresholds. At minimum:
 | Disk usage | 80% | 90% |
 | Replication lag (if applicable) | >5 seconds | >30 seconds |
 | **Per-workload request budget consumed** | >70% of `max_requests_per_invocation` | >100% of `max_requests_per_invocation` |
+| **Per-workload response-byte budget consumed** | >70% of invocation or daily byte budget | >100% of invocation or daily byte budget |
 | **Per-workload rows written** | >80% of declared `expected_volume_rows` | >150% of declared `expected_volume_rows` |
 | **Per-workload unchanged-write ratio** | >0.0 (any unchanged rows written) | >0.1 |
 
-The last three thresholds (request budget, rows written, unchanged-write ratio) are required because incident #23 was triggered by request/write amplification without connection saturation. Connection-pool and CPU metrics alone would not have caught the 5,570 single-row upserts that exhausted database capacity through request volume rather than connection count.
+The request/response-byte and write thresholds are required because incidents
+can be caused by amplification without connection saturation. Connection-pool
+and CPU metrics alone do not detect either many small requests or a few very
+wide responses.
 
 Thresholds should be declared in `docs/DATABASE_WORKLOADS.yaml` for recurring workloads or in the workload declaration for one-off operations.
 

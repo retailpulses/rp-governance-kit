@@ -4,20 +4,24 @@ Canonical organization-level database incident response playbook for Retailpulse
 
 This document is maintained in `retailpulses/rp-governance-kit`. Repository-local files may add stricter or domain-specific steps but may not weaken central procedures. If repo-local incident procedures and this central playbook conflict, agents must stop and report the conflict.
 
-**Version:** v1.0.0
-**Last updated:** 2026-07-16
+**Version:** v1.1.0
+**Last updated:** 2026-08-30
 
 ---
 
 ## 1. Scope
 
-This playbook covers database resource-exhaustion incidents, performance degradation, outage scenarios, and recovery for all Retailpulses-hosted PostgreSQL (Supabase) databases. It does not cover application-layer incidents, network outages upstream of the database, or third-party API failures unless the database is directly affected.
+This playbook covers database resource-exhaustion, Supabase egress/quota
+exhaustion, performance degradation, outage scenarios, and recovery for all
+Retailpulses-hosted PostgreSQL (Supabase) databases. It does not cover
+application-layer incidents, network outages upstream of the database, or
+third-party API failures unless the database is directly affected.
 
 ## 2. Incident Classification
 
 | Severity | Definition | Example |
 |----------|-----------|---------|
-| **P1 – Critical** | Database unavailable; queries fail; writes blocked | Connection pool exhausted, disk full, deadlock cascade |
+| **P1 – Critical** | Database or platform API unavailable; queries fail; writes blocked | Connection pool exhausted, egress quota restriction, disk full, deadlock cascade |
 | **P2 – High** | Degraded performance; elevated latency; intermittent errors | CPU sustained >95%, statement timeouts >30%, connection count near limit |
 | **P3 – Medium** | Performance concern not yet user-visible; threshold breach on warning metrics | CPU sustained >70%, slow query log growth, replication lag >5s |
 | **P4 – Low** | Capacity planning concern; trend detected | Disk usage growing faster than baseline, connection count trend upward |
@@ -35,6 +39,9 @@ When a resource-exhaustion alert fires or an operator notices database unrespons
    - **Disk**: `SELECT pg_database_size(current_database())`.
    - **Memory**: Check Supabase Dashboard memory usage.
    - **Locks**: `SELECT * FROM pg_locks WHERE NOT granted`.
+   - **Egress**: Check organization Billing/Usage and project egress charts;
+     record included quota, current usage, billing-cycle boundary, Spend Cap
+     state, and the exact restriction/recovery timestamps.
 3. **Identify the source.** Find the responsible query, connection, or Worker:
    - `SELECT pid, usename, application_name, client_addr, state, query_start, query FROM pg_stat_activity WHERE state != 'idle' ORDER BY query_start`.
    - Cross-reference `application_name` with known Workers and scheduled jobs.
@@ -85,6 +92,14 @@ ORDER BY pg_database_size(pg_database.datname) DESC;
 ```
 
 Copy all output to the incident tracking Issue before proceeding. Do not rely on the database being available for evidence retrieval after mitigation.
+
+For egress incidents, also preserve bounded successful-response windows before
+changing workloads. Aggregate response bytes by workload identity, endpoint,
+source, projection, cursor/range, and release. If exports cap at a fixed row
+count, narrow the time window until it is complete. Do not assign root cause
+from request counts alone. Identified workloads must explain at least 80% of
+measured successful-response bytes in a representative window before the
+majority-byte root cause is declared.
 
 ### 3.3 Decision Matrix
 

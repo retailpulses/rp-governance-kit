@@ -74,6 +74,13 @@ fi
 # Check the three core governance files form a coherent set
 echo ""
 echo "--- Governance doc set coherence ---"
+
+if grep -q 'Egress and Read-Amplification Control' "$KIT_DOCS/DATABASE_GOVERNANCE.md" && \
+   grep -q 'response bytes' "$KIT_DOCS/DATABASE_INCIDENT_RESPONSE.md"; then
+  pass "Policy and incident playbook cover egress attribution"
+else
+  fail "Egress attribution policy is incomplete"
+fi
 CORE_DOCS=(
   "DATABASE_GOVERNANCE.md"
   "DATABASE_OWNERSHIP.yaml"

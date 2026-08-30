@@ -108,6 +108,7 @@ Repositories that contain database-writing code (Workers, scripts, cron jobs, sy
 - **Kill-switch method:** how to abort safely
 - **Approval:** who authorized this workload in this repository
 - **Workload declaration reference:** link to the corresponding entry in `DATABASE_WORKLOADS.yaml` or the Issue that authorized a one-off workload
+- **Egress contract:** for scheduled/bulk reads, stable client identity, explicit projection, pagination/cursor strategy, measured per-run/day response-byte budgets, and thresholds
 
 Workloads that do not yet have a canonical registry entry in `DATABASE_WORKLOADS.yaml` must be declared as one-off in `docs/16_DATABASE_GOVERNANCE.local.md` with the same fields, and an Issue must be filed to register them in the canonical registry.
 
@@ -128,6 +129,7 @@ Repositories that do not host any database-writing workloads should state:
 | Generated types | Required for direct Supabase clients; exemption available for API-only consumers |
 | Workload registry | Recurring workloads must be registered in `DATABASE_WORKLOADS.yaml` |
 | N+1 prohibition | No per-record DB/API lookups in loops; use bulk retrieval; declare max_requests_per_invocation and max_requests_per_1000_input_rows |
+| Egress control | Scheduled/bulk reads use stable client identity, explicit columns, cursor decision, response-byte budgets, and client-side byte metrics |
 | Change-aware writes | Periodic scans must not rewrite unchanged rows for per-row timestamps; prefer run-level freshness |
 | Access path | Every workload must declare `postgrest`, `supavisor`, `internal_api`, or `direct_postgres`; consumers may use any approved server-side path |
 | Release mapping | Scheduled production workloads must map to a reviewed Git commit; no untracked VPS source |

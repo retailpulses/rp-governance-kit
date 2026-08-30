@@ -8,6 +8,60 @@ jobs:
   # BLOCKING checks — fail = merge blocked
   # ═══════════════════════════════════════════════════════════
 
+  egress-contract:
+    name: "BLOCKING | Supabase Egress Contract"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Require attribution and byte budgets for changed runtime reads
+        env:
+          PR_BODY: ${{ github.event.pull_request.body || '' }}
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
+          CHANGED=$(git diff --name-only "$BASE"..."$HEAD" || true)
+          READ_PATHS=()
+
+          while IFS= read -r file; do
+            [[ -z "$file" || ! -f "$file" ]] && continue
+            echo "$file" | grep -qE '\.(js|mjs|cjs|ts|tsx|py)$' || continue
+            echo "$file" | grep -qE '(^|/)(test|tests|fixtures|dist|vendor|node_modules)(/|$)|\.(test|spec)\.' && continue
+            CONTENT=$(git diff "$BASE"..."$HEAD" -- "$file")
+            if echo "$CONTENT" | grep -qE '^\+.*(\.select\(|select=|/rest/v1/|createClient\(|supabase)' && \
+               echo "$CONTENT" | grep -qE '^\+.*(select|GET|fetch|\.from\()'; then
+              READ_PATHS+=("$file")
+            fi
+          done <<< "$CHANGED"
+
+          if [[ "${#READ_PATHS[@]}" -eq 0 ]]; then
+            echo "No changed runtime Supabase read paths: OK"
+            exit 0
+          fi
+
+          REQUIRED=(
+            "Stable client identity"
+            "Read projection"
+            "Pagination / incremental cursor"
+            "Measured response bytes per invocation"
+            "Projected response bytes per day"
+            "Egress warning / critical thresholds"
+          )
+          FAILED=0
+          for field in "${REQUIRED[@]}"; do
+            if ! echo "$PR_BODY" | grep -qiE "${field}[^:]*:[[:space:]]*[^[:space:]]"; then
+              echo "::error::Runtime database read changed but PR field is missing or blank: $field"
+              FAILED=1
+            fi
+          done
+
+          for file in "${READ_PATHS[@]}"; do
+            echo "::notice file=$file::Runtime Supabase read path changed; egress contract required."
+          done
+          exit "$FAILED"
+
   migration-naming:
     name: "BLOCKING | Migration Naming"
     runs-on: ubuntu-latest

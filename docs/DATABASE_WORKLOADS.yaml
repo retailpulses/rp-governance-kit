@@ -7,9 +7,9 @@
 # batch sizes, marketplace mapping, and monitoring thresholds are owned by the
 # business repository's local sync inventory (docs/SYNC_JOB_INVENTORY.md).
 #
-# Version: 7
-# Last updated: 2026-08-24
-# Governance ref: v1.6.0
+# Version: 8
+# Last updated: 2026-08-30
+# Governance ref: main
 #
 # Governed by: retailpulses/rp-governance-kit
 #
@@ -59,6 +59,16 @@
 #       max_requests_per_invocation: integer
 #       max_requests_per_1000_input_rows: integer
 #       bulk_fetch_strategy:  IN-clause-batch | bulk-endpoint | pagination-cursor | none
+#     egress_contract:         required for scheduled, bulk, high-volume, or prior-incident reads
+#       client_identity:       stable repo/workload identity sent in x-client-info, User-Agent, or application_name
+#       projection_policy:     explicit_columns | wildcard_bounded
+#       wildcard_justification: required only for wildcard_bounded; include owner and review date
+#       pagination_strategy:   cursor | keyset | bounded_single_page | offset_legacy
+#       incremental_cursor:    cursor field/checkpoint, or "not_applicable: <reason>"
+#       max_response_bytes_per_invocation: positive integer; measured baseline, not a guess
+#       max_response_bytes_per_day: positive integer; measured/projected daily ceiling
+#       warning_budget_pct:    integer 1..99
+#       critical_budget_pct:   integer >=100
 #     incident_ref:            GitHub issue URL or #number
 #     rollback:                URL or description of how to undo this workload's effects
 #

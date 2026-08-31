@@ -77,3 +77,11 @@ if grep -q 'DRY_RUN\|dry.run' "$INSTALLER"; then
 else
   fail "Installer missing dry-run mode"
 fi
+
+# Safety 8: rollout branches are versioned and new installs start from canonical base
+if grep -q 'chore/install-governance-\$kit_commit' "$INSTALLER" && \
+   grep -q 'git switch -c "\$branch" "origin/\$base"' "$INSTALLER"; then
+  pass "Installer uses versioned rollout branches from canonical base"
+else
+  fail "Installer must not reuse a previously merged rollout branch"
+fi

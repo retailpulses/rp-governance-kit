@@ -21,6 +21,7 @@ Standardizes Issue-first development across Retailpulses repos:
 - **Portal release governance** - canonical `ops.homesbliss.net` route acceptance for Inquiry, Tickets, and Orders, including operator capability assertions.
 - **Database governance** - canonical organization-level database policy, domain ownership registry, migration naming/quality rules, access classes, RLS policy, hosted write safety, runtime workload safety (N+1 prohibition, change-aware writes, egress budgets and client attribution, access path declaration, rollout gates, run-health independence), incident response playbook, and workload registry.
 - **Sync Workload Governance** - central invariants for sync and batch workloads, per-repo sync job inventory, and database risk registry for shared-DB workloads.
+- **Worktree and Session Governance** - one writable session per Issue/branch/worktree, a read-only `rp-worktree-hygiene` checker for start/closeout gates, a worktree-scoped session ownership record, and a central adoption inventory.
 - **Rollout tooling** - installer and upgrade scripts for lightweight repo adoption.
 
 ## Issue Creation Rule
@@ -170,5 +171,6 @@ rp-governance-kit/
 
 ## Change log
 
+- 2026-08-31: Added worktree/session isolation governance — canonical `WORKTREE_AND_SESSION_GOVERNANCE.md`, read-only `rp-worktree-hygiene` checker, session ownership record, and active-repository adoption inventory.
 - 2026-08-29: Added canonical Ops Portal release governance and reusable acceptance workflow.
 - 2026-08-14: Added reusable VPS immutable-release orchestration for repo-owned deployment adapters.

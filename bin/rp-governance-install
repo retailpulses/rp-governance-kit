@@ -46,10 +46,10 @@ preflight() {
   if ! gh auth status &>/dev/null; then
     die "gh CLI not authenticated. Run 'gh auth login' first."
   fi
-  for script in rp-issue-create rp-issue-audit rp-issue-work rp-issue-closeout rp-deploy-closeout rp-repo-housekeeping; do
+  for script in rp-issue-create rp-issue-audit rp-issue-work rp-issue-closeout rp-deploy-closeout rp-repo-housekeeping rp-worktree-hygiene; do
     [[ -f "$KIT_DIR/templates/bin/$script" ]] || die "Missing kit template: templates/bin/$script"
   done
-  for doc in 00_CURRENT_STATE.md 05_DECISION_LOG.md 16_DATABASE_GOVERNANCE.md 17_SYNC_WORKLOAD_GOVERNANCE.md SYNC_JOB_INVENTORY.template.md; do
+  for doc in 00_CURRENT_STATE.md 05_DECISION_LOG.md 16_DATABASE_GOVERNANCE.md 17_SYNC_WORKLOAD_GOVERNANCE.md 18_WORKTREE_AND_SESSION_GOVERNANCE.md SYNC_JOB_INVENTORY.template.md; do
     [[ -f "$KIT_DIR/templates/docs/$doc" ]] || die "Missing kit template: templates/docs/$doc"
   done
   [[ -f "$KIT_DIR/templates/governance/local.yaml" ]] || die "Missing kit template: templates/governance/local.yaml"
@@ -143,7 +143,9 @@ is_up_to_date() {
     "bin/rp-issue-closeout"
     "bin/rp-deploy-closeout"
     "bin/rp-repo-housekeeping"
+    "bin/rp-worktree-hygiene"
     "docs/16_DATABASE_GOVERNANCE.md"
+    "docs/18_WORKTREE_AND_SESSION_GOVERNANCE.md"
     "governance/local.yaml"
   )
   if [[ "$WITH_SYNC_GOVERNANCE" == true ]]; then
@@ -167,7 +169,7 @@ copy_files() {
   mkdir -p bin .github .github/workflows docs governance
 
   local script
-  for script in rp-issue-create rp-issue-audit rp-issue-work rp-issue-closeout rp-deploy-closeout rp-repo-housekeeping; do
+  for script in rp-issue-create rp-issue-audit rp-issue-work rp-issue-closeout rp-deploy-closeout rp-repo-housekeeping rp-worktree-hygiene; do
     cp "$KIT_DIR/templates/bin/$script" "bin/$script"
     chmod +x "bin/$script"
   done
@@ -204,6 +206,11 @@ copy_files() {
   # Repo-specific declarations live in docs/16_DATABASE_GOVERNANCE.local.md which is never overwritten.
   sed -e "s/__REF__/$KIT_REF/g" -e "s/__INSTALLED_AT__/$installed_at/g" \
     "$KIT_DIR/templates/docs/16_DATABASE_GOVERNANCE.md" > "docs/16_DATABASE_GOVERNANCE.md"
+
+  # 18_WORKTREE_AND_SESSION_GOVERNANCE.md is also a managed reference, always install/update.
+  # Repository-specific stricter rules live in governance/local.yaml, which is never overwritten.
+  sed -e "s/__REF__/$KIT_REF/g" -e "s/__INSTALLED_AT__/$installed_at/g" \
+    "$KIT_DIR/templates/docs/18_WORKTREE_AND_SESSION_GOVERNANCE.md" > "docs/18_WORKTREE_AND_SESSION_GOVERNANCE.md"
 
   # Sync workload governance (only when --with-sync-governance is set)
   if [[ "$WITH_SYNC_GOVERNANCE" == true ]]; then

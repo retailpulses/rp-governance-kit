@@ -13,7 +13,9 @@ Repo housekeeping (`rp-repo-housekeeping`) runs after deploy or before the next 
 | Step | When | Tool |
 |------|------|------|
 | Before coding | Issue audit and work brief | `rp-issue-work` |
+| Before coding | Worktree/session isolation start gate | `rp-worktree-hygiene --strict` |
 | Before PR | Governance checks and PR summary | `rp-issue-closeout` |
+| Before PR | Worktree/session isolation closeout gate | `rp-worktree-hygiene --strict` |
 | After deploy | Deploy closeout report | `rp-deploy-closeout` |
 | After deploy / before next task | Repo housekeeping check | `rp-repo-housekeeping` |
 
@@ -39,3 +41,4 @@ Reports are written temporarily to `.tmp/` during workflow runs. The `.tmp/` dir
 
 - `bin/rp-deploy-closeout` — generate a post-deploy closeout report
 - `bin/rp-repo-housekeeping` — check repo hygiene after deployment
+- `bin/rp-worktree-hygiene` — read-only worktree/session isolation check (start/closeout gate); local-only, never a CI check

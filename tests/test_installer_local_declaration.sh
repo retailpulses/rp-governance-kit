@@ -29,3 +29,29 @@ if grep -Fq "printf '%b' \"\$FOLLOWUP_ACTIONS\"" "$HOUSEKEEPING"; then
 else
   fail "housekeeping must use a fixed printf format string"
 fi
+
+# --- Worktree/session governance distribution (inbox#65) ---
+if grep -q 'rp-worktree-hygiene' "$INSTALLER"; then
+  pass "installer distributes rp-worktree-hygiene"
+else
+  fail "installer must distribute rp-worktree-hygiene"
+fi
+
+if grep -q '18_WORKTREE_AND_SESSION_GOVERNANCE' "$INSTALLER"; then
+  pass "installer renders the managed worktree/session reference"
+else
+  fail "installer must install docs/18_WORKTREE_AND_SESSION_GOVERNANCE.md"
+fi
+
+if [[ -f "$KIT_DIR/templates/docs/18_WORKTREE_AND_SESSION_GOVERNANCE.md" ]] \
+  && grep -q '__REF__' "$KIT_DIR/templates/docs/18_WORKTREE_AND_SESSION_GOVERNANCE.md"; then
+  pass "18_WORKTREE_AND_SESSION_GOVERNANCE.md renders the selected ref"
+else
+  fail "18_WORKTREE_AND_SESSION_GOVERNANCE.md must carry __REF__ placeholder"
+fi
+
+if grep -q 'worktree_session' "$LOCAL_TEMPLATE"; then
+  pass "local declaration carries a worktree_session section"
+else
+  fail "local declaration must declare worktree_session"
+fi

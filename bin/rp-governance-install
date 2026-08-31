@@ -246,9 +246,11 @@ has_changes() {
 
 install_one() {
   local repo="$1"
-  local branch="chore/install-governance-kit"
-  local tmpdir base existing_pr pr_url
+  local kit_commit branch tmpdir base existing_pr pr_url
   local start_dir="$KIT_DIR"
+
+  kit_commit=$(git -C "$KIT_DIR" rev-parse --short=12 HEAD) || die "Cannot resolve governance kit commit"
+  branch="chore/install-governance-$kit_commit"
 
   echo ""
   echo "========================================"
@@ -277,8 +279,13 @@ install_one() {
   fi
 
   cd "$tmpdir"
-  git fetch origin "$branch" --quiet 2>/dev/null || true
-  git switch -c "$branch" "origin/$branch" 2>/dev/null || git switch -c "$branch" 2>/dev/null || git switch "$branch"
+  if [[ -n "$existing_pr" ]]; then
+    git fetch origin "$branch" --quiet
+    git switch -c "$branch" "origin/$branch"
+  else
+    git fetch origin "$base" --quiet
+    git switch -c "$branch" "origin/$base"
+  fi
 
   if is_up_to_date "$tmpdir"; then
     echo "Already up to date: $repo"
@@ -325,7 +332,7 @@ install_one() {
       --title "chore: install governance kit" \
       --body "## Linked Issue
 
-Related to retailpulses/rp-governance-kit#2
+Related to retailpulses/inbox#65
 
 ## What Changed
 

@@ -86,15 +86,30 @@ cd "$TMPROOT/clean"
 gitinit
 git checkout -q -b clean-feature
 echo "clean feature" >> f.txt
+mkdir -p governance
+printf 'worktree_session:\n  base_ref: origin/main\n' > governance/local.yaml
+git add governance/local.yaml
 git commit -q -am "clean feature"
 git push -q -u origin clean-feature
 cd "$TMPROOT"
-run_check "$TMPROOT/clean" --strict --base-ref origin/main
+run_check "$TMPROOT/clean" --strict
 assert_rc 0
 assert_contains "Result: OK"
+assert_contains "Base ref: origin/main"
 assert_contains "Dirty: clean"
 assert_contains "Merged into base: not merged"
 assert_contains "Worktrees: 1"
+
+echo "--- scenario: fresh branch at canonical base ---"
+git clone -q "$TMPROOT/remotes/upstream.git" "$TMPROOT/fresh"
+cd "$TMPROOT/fresh"
+git checkout -q -b fresh
+git push -q -u origin fresh
+cd "$TMPROOT"
+run_check "$TMPROOT/fresh" --strict --base-ref origin/main
+assert_rc 0
+assert_contains "Merged into base: at base"
+assert_not_contains "already merged into canonical base"
 
 echo "--- scenario: dirty ---"
 git clone -q "$TMPROOT/remotes/upstream.git" "$TMPROOT/dirty"
@@ -187,6 +202,14 @@ rm -rf "$TMPROOT/doomed-wt"
 cd "$TMPROOT"
 run_check "$TMPROOT/prunable"
 assert_contains "Prunable worktree metadata: 1"
+
+echo "--- scenario: ownership record is detected and redacted ---"
+owner_git_dir="$(git -C "$TMPROOT/prunable" rev-parse --git-dir)"
+printf 'issue=65\nbranch=main\nsession=do-not-print-this\nstarted_at=2026-08-31T00:00:00Z\n' > "$TMPROOT/prunable/$owner_git_dir/rp-session-owner"
+run_check "$TMPROOT/prunable"
+assert_contains "Session ownership record: found"
+assert_contains "values redacted"
+assert_not_contains "do-not-print-this"
 
 echo "--- simulation A: two sessions, isolated branches (safe) ---"
 git clone -q "$TMPROOT/remotes/upstream.git" "$TMPROOT/sim-a"

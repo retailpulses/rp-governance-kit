@@ -41,7 +41,7 @@ constraints:
 # Central invariants are defined in WORKTREE_AND_SESSION_GOVERNANCE.md
 # in retailpulses/rp-governance-kit. This section must not weaken them.
 worktree_session:
-  base_ref: main
+  base_ref: origin/main
   # one_writable_session: true          # implied by central policy
   # require_ownership_record: true      # stricter: block start without rp-session-owner
   # require_merged_before_cleanup: true # stricter: block worktree removal unless merged

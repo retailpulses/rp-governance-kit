@@ -150,7 +150,7 @@ base_ref=main
 
 ### Enforcement status (v1)
 
-In v1 the record is **informational**. The `rp-worktree-hygiene` checker reports whether a record exists and echoes its fields; it does not block on a missing or stale record. The strict start/closeout gate blocks on structural violations (detached HEAD, dirty tree, missing upstream, branch checked out in multiple worktrees), not on the presence of the record.
+In v1 the record is **informational**. The `rp-worktree-hygiene` checker reports whether a record exists but redacts its values; it does not block on a missing or stale record. The strict start/closeout gate blocks on structural violations (detached HEAD, dirty tree, missing upstream, branch checked out in multiple worktrees), not on the presence of the record.
 
 ## The Checker: `rp-worktree-hygiene`
 
@@ -158,7 +158,7 @@ In v1 the record is **informational**. The `rp-worktree-hygiene` checker reports
 
 | Mode | Behavior |
 |------|----------|
-| Default (informational) | Prints a full report. Always exits 0 unless the current directory is not a git worktree (exit 2). |
+| Default (informational) | Prints a full report. Exits 0 for repository findings; invalid usage or a non-Git path exits 2. |
 | `--strict` | Exits 1 when any structural violation is found; 0 otherwise. |
 
 Reported conditions (each is handled explicitly):

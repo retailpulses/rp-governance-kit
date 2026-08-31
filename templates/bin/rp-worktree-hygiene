@@ -13,7 +13,7 @@
 set -uo pipefail
 
 STRICT=false
-BASE_REF="${RP_CANONICAL_BASE_REF:-origin/main}"
+BASE_REF="${RP_CANONICAL_BASE_REF:-}"
 TARGET="."
 
 usage() {
@@ -26,7 +26,7 @@ Read-only: no destructive git actions.
 Options:
   --strict          Exit 1 when a structural violation is found (start/closeout gate).
   --base-ref <ref>  Base ref used for the merged/ahead-behind check.
-                    Default: RP_CANONICAL_BASE_REF, then origin/main.
+                    Default: RP_CANONICAL_BASE_REF, local declaration, then origin/main.
   --help            Show this help.
 
 Reported conditions: detached HEAD, dirty tree, missing upstream, branch checked
@@ -71,6 +71,22 @@ if ! toplevel="$(git rev-parse --show-toplevel 2>/dev/null)"; then
 fi
 cd "$toplevel"
 
+# Resolve the canonical base without evaluating repository-controlled text.
+# CLI wins over environment; environment wins over the local declaration.
+if [[ -z "$BASE_REF" && -f "governance/local.yaml" ]]; then
+  BASE_REF="$(awk '
+    /^worktree_session:[[:space:]]*$/ { in_section=1; next }
+    in_section && /^[^[:space:]#]/ { exit }
+    in_section && /^[[:space:]]+base_ref:[[:space:]]*/ {
+      sub(/^[[:space:]]+base_ref:[[:space:]]*/, "")
+      gsub(/^["'\'' ]+|["'\'' ]+$/, "")
+      print
+      exit
+    }
+  ' governance/local.yaml)"
+fi
+BASE_REF="${BASE_REF:-origin/main}"
+
 # --- Branch / detached -----------------------------------------------------
 branch=""
 detached=false
@@ -101,7 +117,10 @@ merged="unknown"
 ahead="?"
 behind="?"
 if [[ -n "$base_sha" ]]; then
-  if git merge-base --is-ancestor HEAD "$base_sha" 2>/dev/null; then
+  head_sha="$(git rev-parse HEAD 2>/dev/null || true)"
+  if [[ "$head_sha" == "$base_sha" ]]; then
+    merged="at base"
+  elif git merge-base --is-ancestor HEAD "$base_sha" 2>/dev/null; then
     merged="merged"
   else
     merged="not merged"

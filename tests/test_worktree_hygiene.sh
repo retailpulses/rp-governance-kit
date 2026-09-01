@@ -231,6 +231,16 @@ run_check "$TMPROOT/sim-a-session-b" --strict --base-ref main
 assert_rc 0
 assert_contains "Result: OK"
 
+echo "--- scenario: primary checkout is coordination-only during concurrency ---"
+run_check "$TMPROOT/sim-a" --strict --base-ref main
+assert_rc 1
+assert_contains "primary checkout is coordination-only while 3 active worktrees exist"
+assert_contains "Active worktrees: 3"
+
+echo "--- scenario: prunable metadata alone does not make primary coordination-only ---"
+run_check "$TMPROOT/prunable" --strict --base-ref origin/main
+assert_not_contains "primary checkout is coordination-only"
+
 echo "--- simulation B: two sessions, same branch (collision) ---"
 git clone -q "$TMPROOT/remotes/upstream.git" "$TMPROOT/sim-b"
 cd "$TMPROOT/sim-b"

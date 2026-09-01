@@ -2,7 +2,7 @@
 
 **Status:** Canonical policy
 **Owner:** `retailpulses/rp-governance-kit`
-**Governance version:** v1.6.0
+**Governance version:** v1.7.0
 **Issue:** retailpulses/inbox#65
 
 ## Purpose
@@ -39,6 +39,7 @@ Concretely:
 2. Each session works on exactly one branch.
 3. Each branch is checked out in at most one worktree.
 4. Each worktree has at most one session writing to it.
+5. While two or more active worktrees exist, the primary checkout is coordination-only; writable sessions must use dedicated linked worktrees.
 
 The same Issue may be worked by a later session only after the previous session has closed out and its worktree ownership has been released.
 
@@ -67,7 +68,7 @@ Before beginning work on an Issue, a session MUST:
 
 1. Confirm the Issue exists and is compliant (see `docs/ISSUE_GOVERNANCE.md`).
 2. Confirm no other session owns the Issue / branch.
-3. Create or enter a worktree dedicated to this Issue (the main checkout counts as one worktree).
+3. Create or enter a worktree dedicated to this Issue. The primary checkout may be writable only while it is the repository's sole active worktree; once concurrent work exists, it is coordination-only.
 4. Record the session ownership (see "Session ownership record" below).
 5. Run the start gate:
 
@@ -169,6 +170,7 @@ Reported conditions (each is handled explicitly):
 | Dirty working tree (tracked or untracked changes) | reported | **violation** |
 | Missing upstream | reported | **violation** |
 | Branch checked out in more than one worktree | reported | **violation** |
+| Primary checkout used while 2+ non-prunable worktrees exist | reported | **violation** — use a dedicated linked worktree |
 | Prunable worktree metadata present | reported | warning (non-blocking) |
 | Canonical base cannot be resolved | reported | **violation** |
 | Branch merged into base ref (with ahead/behind counts) | reported | **violation** — create a fresh branch |
@@ -192,4 +194,5 @@ Therefore:
 
 | Version | Date | Changes |
 |---------|------|---------|
+| v1.7.0 | 2026-09-01 | Make the primary checkout coordination-only during concurrent work and enforce the rule in the strict local gate. |
 | v1.0.0 | 2026-08-31 | Initial worktree/session governance — one writable session per Issue/branch/worktree, read-only checker, session ownership record design, v1 strict start/closeout gate, explicit CI limitation. |

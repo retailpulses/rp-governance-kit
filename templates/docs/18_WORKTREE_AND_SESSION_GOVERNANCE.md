@@ -25,7 +25,7 @@ This file is the repository-local entrypoint for Retailpulses worktree/session i
 
 **One writable session per Issue / branch / worktree.**
 
-Each unit of work is owned by one session, on one branch, in one worktree. The same branch must not be checked out in more than one worktree, and a worktree must not have more than one session writing to it.
+Each unit of work is owned by one session, on one branch, in one worktree. The same branch must not be checked out in more than one worktree, and a worktree must not have more than one session writing to it. When two or more non-prunable worktrees exist, the primary checkout is coordination-only and writable sessions must use dedicated linked worktrees.
 
 ## Start Gate
 
@@ -78,6 +78,7 @@ This repository's stricter session/worktree rules (if any) live in `governance/l
 | Rule | Level | Summary |
 |------|-------|---------|
 | One writable session | MUST | One session per Issue / branch / worktree |
+| Concurrent primary checkout | MUST | Primary checkout is coordination-only while 2+ active worktrees exist |
 | Start gate | MUST | `rp-worktree-hygiene --strict` before work |
 | Closeout gate | MUST | `rp-worktree-hygiene --strict` before PR |
 | Ownership record | SHOULD | Worktree-scoped `rp-session-owner`, never committed |

@@ -30,8 +30,8 @@ Options:
   --help            Show this help.
 
 Reported conditions: detached HEAD, dirty tree, missing upstream, branch checked
-out in multiple worktrees, prunable worktree metadata, merged vs base ref,
-and the session ownership record.
+out in multiple worktrees, use of the primary checkout during concurrent work,
+prunable worktree metadata, merged vs base ref, and the session ownership record.
 USAGE
 }
 
@@ -181,10 +181,13 @@ if [[ -n "$cur_path" ]]; then
 fi
 
 prunable_count=0
+active_worktree_count=0
 checkout_count=0
 for ((i = 1; i <= worktree_total; i++)); do
   if [[ "${wt_prunable[$i]}" == true ]]; then
     prunable_count=$((prunable_count + 1))
+  else
+    active_worktree_count=$((active_worktree_count + 1))
   fi
   if [[ "$detached" != true && "${wt_branches[$i]}" == "$branch" ]]; then
     checkout_count=$((checkout_count + 1))
@@ -229,6 +232,9 @@ fi
 if [[ "$checkout_count" -gt 1 ]]; then
   record_violation "branch '$branch' is checked out in $checkout_count worktrees"
 fi
+if [[ "$worktree_total" -gt 0 && "$active_worktree_count" -gt 1 && "${wt_paths[1]}" == "$toplevel" ]]; then
+  record_violation "primary checkout is coordination-only while $active_worktree_count active worktrees exist; use a dedicated linked worktree"
+fi
 if [[ -z "$base_sha" ]]; then
   record_violation "canonical base '$BASE_REF' cannot be resolved"
 elif [[ "$merged" == "merged" ]]; then
@@ -257,6 +263,7 @@ fi
 printf 'Merged into base: %s (ahead %s, behind %s)\n' "$merged" "$ahead" "$behind"
 
 printf 'Worktrees: %s\n' "$worktree_total"
+printf 'Active worktrees: %s\n' "$active_worktree_count"
 for ((i = 1; i <= worktree_total; i++)); do
   flag=""
   [[ "${wt_prunable[$i]}" == true ]] && flag=" [prunable]"

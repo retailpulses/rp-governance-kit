@@ -27,29 +27,21 @@ Options:
   --repos <file>            Batch mode: one owner/repo per line; blank lines and # comments ignored.
   --ref <ref>               Governance kit ref used by the workflow wrapper. Default: main.
   --dry-run                 Print planned changes without pushing branches or opening PRs.
-  --force                   Overwrite repo-specific docs stubs.
-  --with-sync-governance    Install sync workload governance (17_SYNC_WORKLOAD_GOVERNANCE.md)
-                            and inventory template (only when no inventory exists).
+  --force                   Overwrite repo-specific docs stubs except architecture SSOT.
+  --with-sync-governance    Install sync workload governance and inventory template when absent.
   --help                    Show this help.
 USAGE
 }
 
-die() {
-  echo "Error: $*" >&2
-  exit 1
-}
+die() { echo "Error: $*" >&2; exit 1; }
 
 preflight() {
-  if ! command -v gh &>/dev/null; then
-    die "gh CLI not installed. Install from https://cli.github.com/"
-  fi
-  if ! gh auth status &>/dev/null; then
-    die "gh CLI not authenticated. Run 'gh auth login' first."
-  fi
+  command -v gh &>/dev/null || die "gh CLI not installed."
+  gh auth status &>/dev/null || die "gh CLI not authenticated. Run 'gh auth login' first."
   for script in rp-issue-create rp-issue-audit rp-issue-work rp-issue-closeout rp-deploy-closeout rp-repo-housekeeping rp-worktree-hygiene; do
     [[ -f "$KIT_DIR/templates/bin/$script" ]] || die "Missing kit template: templates/bin/$script"
   done
-  for doc in 00_CURRENT_STATE.md 05_DECISION_LOG.md 16_DATABASE_GOVERNANCE.md 17_SYNC_WORKLOAD_GOVERNANCE.md 18_WORKTREE_AND_SESSION_GOVERNANCE.md SYNC_JOB_INVENTORY.template.md; do
+  for doc in 00_CURRENT_STATE.md 01_ARCHITECTURE.md PHASE.template.md 05_DECISION_LOG.md 16_DATABASE_GOVERNANCE.md 17_SYNC_WORKLOAD_GOVERNANCE.md 18_WORKTREE_AND_SESSION_GOVERNANCE.md SYNC_JOB_INVENTORY.template.md; do
     [[ -f "$KIT_DIR/templates/docs/$doc" ]] || die "Missing kit template: templates/docs/$doc"
   done
   [[ -f "$KIT_DIR/templates/governance/local.yaml" ]] || die "Missing kit template: templates/governance/local.yaml"
@@ -58,371 +50,126 @@ preflight() {
 parse_args() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --help|-h)
-        usage
-        exit 0
-        ;;
-      --repos)
-        [[ $# -ge 2 ]] || die "--repos requires a file"
-        REPOS_FILE="$2"
-        shift 2
-        ;;
-      --ref)
-        [[ $# -ge 2 ]] || die "--ref requires a value"
-        KIT_REF="$2"
-        shift 2
-        ;;
-      --dry-run)
-        DRY_RUN=true
-        shift
-        ;;
-      --force)
-        FORCE=true
-        shift
-        ;;
-      --with-sync-governance)
-        WITH_SYNC_GOVERNANCE=true
-        shift
-        ;;
-      -*)
-        die "Unknown option: $1"
-        ;;
-      *)
-        REPOS+=("$1")
-        shift
-        ;;
+      --help|-h) usage; exit 0 ;;
+      --repos) [[ $# -ge 2 ]] || die "--repos requires a file"; REPOS_FILE="$2"; shift 2 ;;
+      --ref) [[ $# -ge 2 ]] || die "--ref requires a value"; KIT_REF="$2"; shift 2 ;;
+      --dry-run) DRY_RUN=true; shift ;;
+      --force) FORCE=true; shift ;;
+      --with-sync-governance) WITH_SYNC_GOVERNANCE=true; shift ;;
+      -*) die "Unknown option: $1" ;;
+      *) REPOS+=("$1"); shift ;;
     esac
   done
-
   if [[ -n "$REPOS_FILE" ]]; then
     [[ -f "$REPOS_FILE" ]] || die "Repos file not found: $REPOS_FILE"
     while IFS= read -r repo || [[ -n "$repo" ]]; do
-      repo="${repo%%#*}"
-      repo="$(echo "$repo" | xargs)"
-      [[ -n "$repo" ]] && REPOS+=("$repo")
+      repo="${repo%%#*}"; repo="$(echo "$repo" | xargs)"; [[ -n "$repo" ]] && REPOS+=("$repo")
     done < "$REPOS_FILE"
   fi
-
-  [[ ${#REPOS[@]} -gt 0 ]] || {
-    usage
-    exit 1
-  }
+  [[ ${#REPOS[@]} -gt 0 ]] || { usage; exit 1; }
 }
 
-repo_json_field() {
-  local repo="$1"
-  local field="$2"
-  gh repo view "$repo" --json "$field" --jq ".$field" 2>/dev/null
-}
-
-default_branch() {
-  local repo="$1"
-  gh repo view "$repo" --json defaultBranchRef --jq '.defaultBranchRef.name' 2>/dev/null || echo "main"
-}
-
-is_archived() {
-  local repo="$1"
-  [[ "$(repo_json_field "$repo" isArchived)" == "true" ]]
-}
-
-find_existing_pr() {
-  local repo="$1"
-  local branch="$2"
-  gh pr list --repo "$repo" --head "$branch" --state open --json url --jq '.[0].url // ""' 2>/dev/null
-}
+repo_json_field() { gh repo view "$1" --json "$2" --jq ".$2" 2>/dev/null; }
+default_branch() { gh repo view "$1" --json defaultBranchRef --jq '.defaultBranchRef.name' 2>/dev/null || echo main; }
+is_archived() { [[ "$(repo_json_field "$1" isArchived)" == true ]]; }
+find_existing_pr() { gh pr list --repo "$1" --head "$2" --state open --json url --jq '.[0].url // ""' 2>/dev/null; }
 
 is_up_to_date() {
-  local dir="$1"
+  local dir="$1" f
   local expected_files=(
-    ".github/workflows/governance-checks.yml"
-    ".github/workflows/database-governance.yml"
-    ".github/pull_request_template.md"
-    "bin/rp-issue-create"
-    "bin/rp-issue-audit"
-    "bin/rp-issue-work"
-    "bin/rp-issue-closeout"
-    "bin/rp-deploy-closeout"
-    "bin/rp-repo-housekeeping"
-    "bin/rp-worktree-hygiene"
-    "docs/16_DATABASE_GOVERNANCE.md"
-    "docs/18_WORKTREE_AND_SESSION_GOVERNANCE.md"
-    "governance/local.yaml"
+    ".github/workflows/governance-checks.yml" ".github/workflows/database-governance.yml" ".github/pull_request_template.md"
+    "bin/rp-issue-create" "bin/rp-issue-audit" "bin/rp-issue-work" "bin/rp-issue-closeout" "bin/rp-deploy-closeout" "bin/rp-repo-housekeeping" "bin/rp-worktree-hygiene"
+    "docs/01_ARCHITECTURE.md" "docs/16_DATABASE_GOVERNANCE.md" "docs/18_WORKTREE_AND_SESSION_GOVERNANCE.md" "governance/local.yaml"
   )
-  if [[ "$WITH_SYNC_GOVERNANCE" == true ]]; then
-    expected_files+=("docs/17_SYNC_WORKLOAD_GOVERNANCE.md")
-  fi
-  local f
-  for f in "${expected_files[@]}"; do
-    [[ -f "$dir/$f" ]] || return 1
-  done
+  [[ "$WITH_SYNC_GOVERNANCE" == true ]] && expected_files+=("docs/17_SYNC_WORKLOAD_GOVERNANCE.md")
+  for f in "${expected_files[@]}"; do [[ -f "$dir/$f" ]] || return 1; done
   grep -q "retailpulses/rp-governance-kit" "$dir/.github/workflows/governance-checks.yml" 2>/dev/null || return 1
-  [[ "$(tr -d '\\r\\n' < "$dir/.github/governance-ref.txt" 2>/dev/null)" == "$KIT_REF" ]] || return 1
+  [[ "$(tr -d '\r\n' < "$dir/.github/governance-ref.txt" 2>/dev/null)" == "$KIT_REF" ]] || return 1
   grep -q "rp-issue-audit" "$dir/bin/rp-issue-work" 2>/dev/null || return 1
+  grep -q "Canonical Architecture" "$dir/docs/01_ARCHITECTURE.md" 2>/dev/null || return 1
   grep -q "16_DATABASE_GOVERNANCE" "$dir/docs/16_DATABASE_GOVERNANCE.md" 2>/dev/null || return 1
-  if [[ "$WITH_SYNC_GOVERNANCE" == true ]]; then
-    grep -q "17_SYNC_WORKLOAD_GOVERNANCE" "$dir/docs/17_SYNC_WORKLOAD_GOVERNANCE.md" 2>/dev/null || return 1
-  fi
+  [[ "$WITH_SYNC_GOVERNANCE" != true ]] || grep -q "17_SYNC_WORKLOAD_GOVERNANCE" "$dir/docs/17_SYNC_WORKLOAD_GOVERNANCE.md" 2>/dev/null || return 1
   return 0
 }
 
 copy_files() {
-  mkdir -p bin .github .github/workflows docs governance
-
-  local script
+  mkdir -p bin .github .github/workflows docs docs/phases governance
+  local script doc installed_at
   for script in rp-issue-create rp-issue-audit rp-issue-work rp-issue-closeout rp-deploy-closeout rp-repo-housekeeping rp-worktree-hygiene; do
-    cp "$KIT_DIR/templates/bin/$script" "bin/$script"
-    chmod +x "bin/$script"
+    cp "$KIT_DIR/templates/bin/$script" "bin/$script"; chmod +x "bin/$script"
   done
-
-  cp "$KIT_DIR/templates/github/pull_request_template.md" ".github/pull_request_template.md"
-  sed "s/__REF__/$KIT_REF/g" "$KIT_DIR/templates/github/workflows/governance-checks-wrapper.yml" > ".github/workflows/governance-checks.yml"
-
-  local wrapper_src="$KIT_DIR/templates/github/workflows/post-deploy-governance-wrapper.yml"
-  if [[ -f "$wrapper_src" ]]; then
-    sed "s/__REF__/$KIT_REF/g" "$wrapper_src" > ".github/workflows/post-deploy-governance.yml" 2>/dev/null || true
+  cp "$KIT_DIR/templates/github/pull_request_template.md" .github/pull_request_template.md
+  sed "s/__REF__/$KIT_REF/g" "$KIT_DIR/templates/github/workflows/governance-checks-wrapper.yml" > .github/workflows/governance-checks.yml
+  if [[ -f "$KIT_DIR/templates/github/workflows/post-deploy-governance-wrapper.yml" ]]; then
+    sed "s/__REF__/$KIT_REF/g" "$KIT_DIR/templates/github/workflows/post-deploy-governance-wrapper.yml" > .github/workflows/post-deploy-governance.yml 2>/dev/null || true
   fi
+  sed "s/__REF__/$KIT_REF/g" "$KIT_DIR/templates/github/workflows/database-governance-wrapper.yml" > .github/workflows/database-governance.yml
 
-  sed "s/__REF__/$KIT_REF/g" "$KIT_DIR/templates/github/workflows/database-governance-wrapper.yml" > ".github/workflows/database-governance.yml"
-
-  # The local declaration is repository-owned. Install a ref-rendered starter
-  # only when absent; upgrades must never overwrite populated declarations.
-  if [[ ! -f "governance/local.yaml" ]]; then
-    sed "s/__GOVERNANCE_REF__/$KIT_REF/g" \
-      "$KIT_DIR/templates/governance/local.yaml" > "governance/local.yaml"
+  if [[ ! -f governance/local.yaml ]]; then
+    sed "s/__GOVERNANCE_REF__/$KIT_REF/g" "$KIT_DIR/templates/governance/local.yaml" > governance/local.yaml
     echo "Minimal governance/local.yaml installed. Populate repository-specific declarations."
   fi
 
-  local installed_at
   installed_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-
-  local doc
   for doc in 00_CURRENT_STATE.md 05_DECISION_LOG.md 10_ENGINEERING_PRINCIPLES.md 11_FRONTEND_STANDARDS.md 12_DATA_ACCESS_AND_SECRETS.md 13_PLATFORM_DEPENDENCY_POLICY.md 14_ISSUE_GOVERNANCE.md 15_DEPLOYMENT_AND_HOUSEKEEPING.md; do
-    if [[ ! -f "docs/$doc" || "$FORCE" == true ]]; then
-      cp "$KIT_DIR/templates/docs/$doc" "docs/$doc"
-    fi
+    if [[ ! -f "docs/$doc" || "$FORCE" == true ]]; then cp "$KIT_DIR/templates/docs/$doc" "docs/$doc"; fi
   done
 
-  # 16_DATABASE_GOVERNANCE.md is always updated with the new ref (it's a managed reference, not repo-owned).
-  # Repo-specific declarations live in docs/16_DATABASE_GOVERNANCE.local.md which is never overwritten.
-  sed -e "s/__REF__/$KIT_REF/g" -e "s/__INSTALLED_AT__/$installed_at/g" \
-    "$KIT_DIR/templates/docs/16_DATABASE_GOVERNANCE.md" > "docs/16_DATABASE_GOVERNANCE.md"
+  # Architecture is repository-owned truth. Install only when absent; never overwrite it during upgrades, including --force.
+  if [[ ! -f docs/01_ARCHITECTURE.md ]]; then
+    cp "$KIT_DIR/templates/docs/01_ARCHITECTURE.md" docs/01_ARCHITECTURE.md
+    echo "Architecture SSOT template installed. Reconcile it with actual implementation/deployment before architecture-affecting work."
+  fi
+  # Phase template is a starter artifact, not a managed active Phase.
+  [[ -f docs/phases/README.template.md ]] || cp "$KIT_DIR/templates/docs/PHASE.template.md" docs/phases/README.template.md
 
-  # 18_WORKTREE_AND_SESSION_GOVERNANCE.md is also a managed reference, always install/update.
-  # Repository-specific stricter rules live in governance/local.yaml, which is never overwritten.
-  sed -e "s/__REF__/$KIT_REF/g" -e "s/__INSTALLED_AT__/$installed_at/g" \
-    "$KIT_DIR/templates/docs/18_WORKTREE_AND_SESSION_GOVERNANCE.md" > "docs/18_WORKTREE_AND_SESSION_GOVERNANCE.md"
+  sed -e "s/__REF__/$KIT_REF/g" -e "s/__INSTALLED_AT__/$installed_at/g" "$KIT_DIR/templates/docs/16_DATABASE_GOVERNANCE.md" > docs/16_DATABASE_GOVERNANCE.md
+  sed -e "s/__REF__/$KIT_REF/g" -e "s/__INSTALLED_AT__/$installed_at/g" "$KIT_DIR/templates/docs/18_WORKTREE_AND_SESSION_GOVERNANCE.md" > docs/18_WORKTREE_AND_SESSION_GOVERNANCE.md
 
-  # Sync workload governance (only when --with-sync-governance is set)
   if [[ "$WITH_SYNC_GOVERNANCE" == true ]]; then
-    # 17_SYNC_WORKLOAD_GOVERNANCE.md is a managed reference, like 16 — always install/update.
-    sed -e "s/__REF__/$KIT_REF/g" -e "s/__INSTALLED_AT__/$installed_at/g" \
-      "$KIT_DIR/templates/docs/17_SYNC_WORKLOAD_GOVERNANCE.md" > "docs/17_SYNC_WORKLOAD_GOVERNANCE.md"
-
-    # Inventory template: only install when no inventory exists. Never overwrite a populated inventory.
-    if [[ ! -f "docs/SYNC_JOB_INVENTORY.md" ]]; then
-      cp "$KIT_DIR/templates/docs/SYNC_JOB_INVENTORY.template.md" "docs/SYNC_JOB_INVENTORY.md"
-      echo "Sync inventory template installed. Populate it before production activation."
-    else
-      echo "Existing SYNC_JOB_INVENTORY.md found — not overwriting."
-    fi
+    sed -e "s/__REF__/$KIT_REF/g" -e "s/__INSTALLED_AT__/$installed_at/g" "$KIT_DIR/templates/docs/17_SYNC_WORKLOAD_GOVERNANCE.md" > docs/17_SYNC_WORKLOAD_GOVERNANCE.md
+    if [[ ! -f docs/SYNC_JOB_INVENTORY.md ]]; then cp "$KIT_DIR/templates/docs/SYNC_JOB_INVENTORY.template.md" docs/SYNC_JOB_INVENTORY.md; else echo "Existing SYNC_JOB_INVENTORY.md found — not overwriting."; fi
   fi
 
-  # Record installed governance ref for upgrade detection
-  echo "$KIT_REF" > ".github/governance-ref.txt"
-
+  echo "$KIT_REF" > .github/governance-ref.txt
   touch .gitignore
-  if ! grep -q '^\.tmp/' .gitignore 2>/dev/null; then
-    {
-      echo ""
-      echo "# Temp files"
-      echo ".tmp/"
-    } >> .gitignore
-  fi
+  grep -q '^\.tmp/' .gitignore 2>/dev/null || printf '\n# Temp files\n.tmp/\n' >> .gitignore
 }
 
-has_changes() {
-  ! git diff --quiet || ! git diff --cached --quiet || [[ -n "$(git ls-files --others --exclude-standard)" ]]
-}
+has_changes() { ! git diff --quiet || ! git diff --cached --quiet || [[ -n "$(git ls-files --others --exclude-standard)" ]]; }
 
 install_one() {
-  local repo="$1"
-  local kit_commit branch tmpdir base existing_pr pr_url
-  local start_dir="$KIT_DIR"
-
+  local repo="$1" kit_commit branch tmpdir base existing_pr pr_url start_dir="$KIT_DIR"
   kit_commit=$(git -C "$KIT_DIR" rev-parse --short=12 HEAD) || die "Cannot resolve governance kit commit"
   branch="chore/install-governance-$kit_commit"
-
-  echo ""
-  echo "========================================"
-  echo "Processing: $repo"
-  echo "========================================"
-
-  if is_archived "$repo"; then
-    echo "Skipping archived repo: $repo"
-    SKIPPED+=("$repo (archived)")
-    return
-  fi
-
-  base=$(default_branch "$repo")
-  existing_pr=$(find_existing_pr "$repo" "$branch")
-
-  cd /tmp
-  tmpdir=$(mktemp -d "/tmp/rp-governance-XXXXXX")
-
-  echo "Cloning $repo ..."
-  if ! gh repo clone "$repo" "$tmpdir" -- --quiet; then
-    echo "Failed to clone $repo"
-    FAILED+=("$repo (clone failed)")
-    cd "$start_dir"
-    rm -rf "$tmpdir"
-    return
-  fi
-
+  echo ""; echo "========================================"; echo "Processing: $repo"; echo "========================================"
+  if is_archived "$repo"; then echo "Skipping archived repo: $repo"; SKIPPED+=("$repo (archived)"); return; fi
+  base=$(default_branch "$repo"); existing_pr=$(find_existing_pr "$repo" "$branch")
+  cd /tmp; tmpdir=$(mktemp -d /tmp/rp-governance-XXXXXX)
+  if ! gh repo clone "$repo" "$tmpdir" -- --quiet; then FAILED+=("$repo (clone failed)"); cd "$start_dir"; rm -rf "$tmpdir"; return; fi
   cd "$tmpdir"
-  if [[ -n "$existing_pr" ]]; then
-    git fetch origin "$branch" --quiet
-    git switch -c "$branch" "origin/$branch"
-  else
-    git fetch origin "$base" --quiet
-    git switch -c "$branch" "origin/$base"
-  fi
-
-  if is_up_to_date "$tmpdir"; then
-    echo "Already up to date: $repo"
-    UPTODATE+=("$repo")
-    cd "$start_dir"
-    rm -rf "$tmpdir"
-    return
-  fi
-
+  if [[ -n "$existing_pr" ]]; then git fetch origin "$branch" --quiet; git switch -c "$branch" "origin/$branch"; else git fetch origin "$base" --quiet; git switch -c "$branch" "origin/$base"; fi
+  if is_up_to_date "$tmpdir"; then UPTODATE+=("$repo"); cd "$start_dir"; rm -rf "$tmpdir"; return; fi
   copy_files
-
-  if ! has_changes; then
-    echo "No changes to commit: $repo"
-    UPTODATE+=("$repo")
-    cd "$start_dir"
-    rm -rf "$tmpdir"
-    return
-  fi
-
-  echo "Changes:"
+  if ! has_changes; then UPTODATE+=("$repo"); cd "$start_dir"; rm -rf "$tmpdir"; return; fi
   git status --short
+  if [[ "$DRY_RUN" == true ]]; then INSTALLED+=("$repo (dry-run)"); cd "$start_dir"; rm -rf "$tmpdir"; return; fi
+  git add -A; git commit -m "chore: install governance kit" -m "Install centralized governance kit $KIT_REPO@$KIT_REF." >/dev/null; git push -u origin "$branch" --quiet
+  if [[ -n "$existing_pr" ]]; then PR_URLS+=("$repo -> $existing_pr"); INSTALLED+=("$repo (updated PR)"); else
+    pr_url=$(gh pr create --repo "$repo" --head "$branch" --base "$base" --title "chore: install governance kit" --body "Related to retailpulses/inbox#65
 
-  if [[ "$DRY_RUN" == true ]]; then
-    echo "[DRY-RUN] Would commit, push, and open/update PR for $repo"
-    INSTALLED+=("$repo (dry-run)")
-    cd "$start_dir"
-    rm -rf "$tmpdir"
-    return
+Installs/updates centralized Retailpulses governance, including the architecture SSOT starter when absent. Repository-owned architecture truth is never overwritten by upgrades. Review and reconcile docs/01_ARCHITECTURE.md before architecture-affecting work.")
+    PR_URLS+=("$repo -> $pr_url"); INSTALLED+=("$repo")
   fi
-
-  git add -A
-  git commit -m "chore: install governance kit" -m "Install centralized governance kit $KIT_REPO@$KIT_REF." >/dev/null
-  git push -u origin "$branch" --quiet
-
-  if [[ -n "$existing_pr" ]]; then
-    echo "Updated existing PR: $existing_pr"
-    PR_URLS+=("$repo -> $existing_pr")
-    INSTALLED+=("$repo (updated PR)")
-  else
-    pr_url=$(gh pr create \
-      --repo "$repo" \
-      --head "$branch" \
-      --base "$base" \
-      --title "chore: install governance kit" \
-      --body "## Linked Issue
-
-Related to retailpulses/inbox#65
-
-## What Changed
-
-Install the centralized Retailpulses governance kit.
-
-## Why
-
-Keeps this repository aligned with current Issue-first governance and prevents raw low-structure Issue creation from becoming the normal agent workflow.
-
-## User Impact
-
-- [x] No user-facing change
-- [ ] Changes user workflow - describe:
-
-## System Impact
-
-- [ ] No system impact
-- [ ] Database migration
-- [ ] Schema/types changed
-- [ ] Routes/pages changed
-- [x] Agent configuration changed
-- [x] Other: repository governance scripts, PR workflow wrapper, and database governance reference
-
-## Data Model Impact
-
-- [x] No data model changes
-- [ ] Existing tables reused
-- [ ] New tables/columns added - justify:
-
-## Documentation Impact
-
-- [ ] No docs changes needed
-- [x] docs/00_CURRENT_STATE.md updated
-- [x] docs/05_DECISION_LOG.md updated
-- [x] docs/16_DATABASE_GOVERNANCE.md installed (central reference)
-- [ ] Other docs updated:
-
-## Verification
-
-- [x] bash -n bin/rp-issue-create bin/rp-issue-audit bin/rp-issue-work bin/rp-issue-closeout
-- [x] git diff --check
-- [ ] Typecheck passes
-- [ ] Build passes
-- [ ] Tests pass
-- [ ] Manually verified
-
-## Risks for Jim Review
-
-The reusable workflow points at rp-governance-kit@$KIT_REF. Merge after the governance-kit source PR is merged if main is expected to contain the new source scripts.
-
-## Suggested Review Focus
-
-Confirm the repo should use the standard lightweight governance footprint." )
-    echo "Created PR: $pr_url"
-    PR_URLS+=("$repo -> $pr_url")
-    INSTALLED+=("$repo")
-  fi
-
-  cd "$start_dir"
-  rm -rf "$tmpdir"
+  cd "$start_dir"; rm -rf "$tmpdir"
 }
 
 summary() {
-  echo ""
-  echo "========================================"
-  echo "Summary"
-  echo "========================================"
-  printf 'Installed/updated: %s\n' "${#INSTALLED[@]}"
-  printf 'Already up to date: %s\n' "${#UPTODATE[@]}"
-  printf 'Skipped: %s\n' "${#SKIPPED[@]}"
-  printf 'Failed: %s\n' "${#FAILED[@]}"
-
-  if [[ ${#PR_URLS[@]} -gt 0 ]]; then
-    echo ""
-    echo "PRs:"
-    printf '  - %s\n' "${PR_URLS[@]}"
-  fi
-  if [[ ${#FAILED[@]} -gt 0 ]]; then
-    echo ""
-    echo "Failures:"
-    printf '  - %s\n' "${FAILED[@]}"
-    return 1
-  fi
+  echo ""; echo "========================================"; echo Summary; echo "========================================"
+  printf 'Installed/updated: %s\n' "${#INSTALLED[@]}"; printf 'Already up to date: %s\n' "${#UPTODATE[@]}"; printf 'Skipped: %s\n' "${#SKIPPED[@]}"; printf 'Failed: %s\n' "${#FAILED[@]}"
+  if [[ ${#PR_URLS[@]} -gt 0 ]]; then printf '%s\n' "${PR_URLS[@]}"; fi
+  [[ ${#FAILED[@]} -eq 0 ]]
 }
 
-parse_args "$@"
-preflight
-
-for repo in "${REPOS[@]}"; do
-  install_one "$repo"
-done
-
-summary
+main() { parse_args "$@"; preflight; local repo; for repo in "${REPOS[@]}"; do install_one "$repo"; done; summary; }
+main "$@"

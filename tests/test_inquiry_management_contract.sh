@@ -29,13 +29,15 @@ INQUIRY_OWNERSHIP=$(section "$OWNERSHIP" inquiry_management)
 TABLES=$(subsection "$INQUIRY_OWNERSHIP" tables views | grep -c '^        - ' || true)
 VIEWS=$(subsection "$INQUIRY_OWNERSHIP" views functions | grep -c '^        - ' || true)
 
-if [[ "$TABLES" -eq 4 ]]; then
-  pass "inquiry_management owns exactly four Phase 1 tables"
+if [[ "$TABLES" -eq 10 ]]; then
+  pass "inquiry_management owns the Phase 1 and API-first tables"
 else
-  fail "inquiry_management must own exactly four Phase 1 tables (found $TABLES)"
+  fail "inquiry_management must own ten canonical tables (found $TABLES)"
 fi
 
-for table in inquiries inquiry_product_links inquiry_knowledge_links knowledge_articles; do
+for table in inquiries inquiry_product_links inquiry_knowledge_links knowledge_articles \
+  inquiry_messages inquiry_webhook_events inquiry_ingestion_runs inquiry_quarantine \
+  inquiry_outbound_operations inquiry_follow_up_events; do
   if printf '%s\n' "$INQUIRY_OWNERSHIP" | grep -q "^        - $table$"; then
     pass "inquiry_management table registered: $table"
   else
@@ -43,12 +45,16 @@ for table in inquiries inquiry_product_links inquiry_knowledge_links knowledge_a
   fi
 done
 
-if [[ "$VIEWS" -eq 2 ]] && \
+if [[ "$VIEWS" -eq 6 ]] && \
    printf '%s\n' "$INQUIRY_OWNERSHIP" | grep -q '^        - inquiry_list_vw$' && \
-   printf '%s\n' "$INQUIRY_OWNERSHIP" | grep -q '^        - inquiry_detail_vw$'; then
-  pass "inquiry_management owns exactly the two Phase 1 views"
+   printf '%s\n' "$INQUIRY_OWNERSHIP" | grep -q '^        - inquiry_detail_vw$' && \
+   printf '%s\n' "$INQUIRY_OWNERSHIP" | grep -q '^        - inquiry_message_timeline_vw$' && \
+   printf '%s\n' "$INQUIRY_OWNERSHIP" | grep -q '^        - follow_up_review_queue_vw$' && \
+   printf '%s\n' "$INQUIRY_OWNERSHIP" | grep -q '^        - follow_up_upcoming_vw$' && \
+   printf '%s\n' "$INQUIRY_OWNERSHIP" | grep -q '^        - follow_up_history_vw$'; then
+  pass "inquiry_management owns the Phase 1 and API-first views"
 else
-  fail "inquiry_management must own inquiry_list_vw and inquiry_detail_vw only"
+  fail "inquiry_management API-first view registry is incomplete"
 fi
 
 if printf '%s\n' "$INQUIRY_OWNERSHIP" | grep -q '^        - inquiry_management_set_updated_at$'; then
@@ -64,6 +70,17 @@ for trigger in \
     pass "inquiry trigger registered: $trigger"
   else
     fail "inquiry trigger missing: $trigger"
+  fi
+done
+
+for function_name in inquiry_claim_outbound_cycle inquiry_finalize_outbound \
+  inquiry_schedule_follow_up inquiry_claim_webhook_event \
+  inquiry_complete_webhook_event inquiry_apply_platform_transition \
+  inquiry_reconcile_api_thread; do
+  if printf '%s\n' "$INQUIRY_OWNERSHIP" | grep -q "^        - $function_name$"; then
+    pass "inquiry API-first function registered: $function_name"
+  else
+    fail "inquiry API-first function missing: $function_name"
   fi
 done
 
@@ -138,6 +155,38 @@ for workload in "${INQUIRY_WORKLOADS[@]}"; do
     'max_rows_per_invocation:' \
     'formula:' \
     'error_recording:' \
+    'rollout_gates:' \
+    'monitoring:' \
+    'local_inventory_ref:'; do
+    if printf '%s\n' "$BLOCK" | grep -q "$required"; then
+      pass "$workload declares $required"
+    else
+      fail "$workload missing $required"
+    fi
+  done
+done
+
+API_FIRST_WORKLOADS=(
+  inquiry_mercari_webhook_ingestion
+  inquiry_mercari_daily_completeness_audit
+  inquiry_operator_send
+)
+
+for workload in "${API_FIRST_WORKLOADS[@]}"; do
+  BLOCK=$(section "$WORKLOADS" "$workload")
+  if [[ -z "$BLOCK" ]]; then
+    fail "inquiry API-first workload missing: $workload"
+    continue
+  fi
+  pass "inquiry API-first workload registered: $workload"
+  for required in \
+    'risk_level:' \
+    'credential_class: service_role' \
+    'fail_closed: true' \
+    'expected_volume_rows_max:' \
+    'cursor_strategy:' \
+    'egress_contract:' \
+    'change_aware_writes:' \
     'rollout_gates:' \
     'monitoring:' \
     'local_inventory_ref:'; do

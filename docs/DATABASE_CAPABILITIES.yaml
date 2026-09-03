@@ -184,6 +184,9 @@ capabilities:
           Mail-integration creates/updates inquiries, reads knowledge articles and
           product links for AI reply context. Phase 1 uses a server-side
           service_role credential under the worker_only access model.
+          This writer capability retires at the API-first ownership epoch in
+          retailpulses/inquiry-automation#92; it must not overlap the new
+          canonical webhook writer.
 
       retailpulses/skills:mercari-inquiry-follow-up:
         read: true
@@ -193,6 +196,8 @@ capabilities:
           Reads inquiries eligible for follow-up. Writes follow_up_status and
           follow_up_sent_at through a server-side Phase 1 service_role credential.
           External sends require separate authorization.
+          The capability is legacy during the API-first Phase and retires only
+          after the Portal manual follow-up queue passes production acceptance.
 
   # ── Catalog Sync (consumer capability domain) ─────────────
   catalog_sync:

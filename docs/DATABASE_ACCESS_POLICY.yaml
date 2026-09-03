@@ -180,7 +180,9 @@ access_policy:
         Domain owner. Owns schema and migrations. Workers, dashboard Functions,
         and VPS scripts use PostgREST through a server-side service_role credential
         in the Phase 1 worker_only model. Direct Postgres is limited to reviewed
-        schema migration administration, never VPS runtime.
+        schema migration administration, never VPS runtime. Issue #92 expands the
+        owner runtime with API webhook/readback, daily completeness audit, and
+        operator outbound/follow-up RPCs; all remain server-side and fail-closed.
 
   # ── workers (mail-integration consumer) ─────────────────────
   retailpulses/workers:
@@ -194,6 +196,8 @@ access_policy:
         Mail-integration Worker creates and updates inquiries during ingestion
         and inquiry-skill processing. Reads inquiry product links and knowledge
         articles for AI reply context using the Phase 1 server-side service_role.
+        This write access is removed at the explicit API-first cutover epoch and
+        may not overlap the new canonical writer.
     product_catalog:
       permitted_access_classes:
         - postgrest

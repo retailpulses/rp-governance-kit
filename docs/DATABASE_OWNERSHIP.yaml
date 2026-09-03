@@ -318,11 +318,28 @@ domains:
         - inquiry_product_links
         - inquiry_knowledge_links
         - knowledge_articles
+        - inquiry_messages
+        - inquiry_webhook_events
+        - inquiry_ingestion_runs
+        - inquiry_quarantine
+        - inquiry_outbound_operations
+        - inquiry_follow_up_events
       views:
         - inquiry_list_vw
         - inquiry_detail_vw
+        - inquiry_message_timeline_vw
+        - follow_up_review_queue_vw
+        - follow_up_upcoming_vw
+        - follow_up_history_vw
       functions:
         - inquiry_management_set_updated_at
+        - inquiry_claim_outbound_cycle
+        - inquiry_finalize_outbound
+        - inquiry_schedule_follow_up
+        - inquiry_claim_webhook_event
+        - inquiry_complete_webhook_event
+        - inquiry_apply_platform_transition
+        - inquiry_reconcile_api_thread
       triggers:
         - trg_inquiries_updated_at ON inquiries
         - trg_knowledge_articles_updated_at ON knowledge_articles
@@ -333,7 +350,10 @@ domains:
       UUID foreign key to RPagentOS-owned product_catalog.product_variants; the optional
       inquiries.platform_account_id UUID foreign key depends on product_catalog.platform_accounts.
       Runtime product reads must use approved product_catalog projections over PostgREST.
-      Migrations: 20260721000000 (core schema), 20260721000001 (views).
+      Migrations: 20260721000000 (core schema), 20260721000001 (views),
+      20260806000001 (operator product links), and 20260903000000 (Mercari
+      Inquiry API-first message/event/outbound/follow-up expansion under
+      retailpulses/inquiry-automation#92 / PR #93).
       Worker, dashboard, VPS enrichment, mail-integration, and follow-up skill all consume
       this domain. Access class is worker_only: browser roles have no policies or grants,
       and every runtime must use a server-side scoped PostgREST credential. Bootstrap

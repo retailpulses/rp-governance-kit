@@ -2,41 +2,56 @@
 
 Centralized governance toolkit for Retailpulses repositories.
 
-This repository is the central governance source for Retailpulses repositories.
-The organization `.github` repo may provide default GitHub templates, but governance logic, reusable workflows, agent commands, rollout scripts, and engineering standards are maintained here.
+This repository is the central governance source for Retailpulses repositories. The organization `.github` repo may provide default GitHub templates, but governance logic, reusable workflows, agent commands, rollout scripts, and engineering standards are maintained here.
 
 If local repo governance files and central governance conflict, agents must stop and report the conflict instead of guessing.
 
 ## What It Does
 
-Standardizes Issue-first development across Retailpulses repos:
+Standardizes Issue-first, architecture-aware development across Retailpulses repos:
 
-- **Issue-first workflow** - every mergeable PR must link to a compliant GitHub Issue.
-- **Issue governance** - normal development Issues must use `bin/rp-issue-create` or an approved repo/org Issue template, not raw `gh issue create --body`.
-- **Agent tooling** - `rp-issue-create`, `rp-issue-audit`, `rp-issue-work`, `rp-issue-closeout`, `rp-deploy-closeout`, and `rp-repo-housekeeping` scripts.
-- **Engineering standards** - centralized templates for engineering principles, frontend, data access, platform dependencies, and Issue governance.
-- **Post-deploy governance** - deploy closeout reports and repo housekeeping via GitHub-native job summaries, PR/Issue comments, or artifacts.
-- **Docs impact tracking** - system changes without docs updates are flagged.
-- **Reusable CI** - central governance checks, post-deploy closeout, and a two-level VPS immutable-release workflow called by repo-owned wrappers and deployment adapters.
-- **Portal release governance** - canonical `ops.homesbliss.net` route acceptance for Inquiry, Tickets, and Orders, including operator capability assertions.
-- **Database governance** - canonical organization-level database policy, domain ownership registry, migration naming/quality rules, access classes, RLS policy, hosted write safety, runtime workload safety (N+1 prohibition, change-aware writes, egress budgets and client attribution, access path declaration, rollout gates, run-health independence), incident response playbook, and workload registry.
-- **Sync Workload Governance** - central invariants for sync and batch workloads, per-repo sync job inventory, and database risk registry for shared-DB workloads.
-- **Worktree and Session Governance** - one writable session per Issue/branch/worktree, a read-only `rp-worktree-hygiene` checker for start/closeout gates, a worktree-scoped session ownership record, and a central adoption inventory.
-- **Rollout tooling** - installer and upgrade scripts for lightweight repo adoption.
+- **Issue-first workflow** — every mergeable PR must link to a compliant GitHub Issue.
+- **Architecture Change Governance** — canonical architecture SSOT, Patch/Feature/Architecture Change classification, bounded Phases, evidence states, and architecture reconciliation Definition of Done. See [`docs/ARCHITECTURE_CHANGE_GOVERNANCE.md`](docs/ARCHITECTURE_CHANGE_GOVERNANCE.md).
+- **Issue governance** — normal development Issues use governed creation/templates rather than low-structure raw Issue creation.
+- **Agent tooling** — `rp-issue-create`, `rp-issue-audit`, `rp-issue-work`, `rp-issue-closeout`, `rp-deploy-closeout`, `rp-repo-housekeeping`, and worktree hygiene tooling.
+- **Engineering standards** — centralized templates for engineering principles, frontend, data access, platform dependencies, and Issue governance.
+- **Post-deploy governance** — deploy closeout reports and repo housekeeping via GitHub-native summaries/comments/artifacts.
+- **Docs impact and reconciliation** — current-state and architecture changes are reconciled rather than merely checked for any docs edit.
+- **Reusable CI** — central governance checks, post-deploy closeout, and VPS immutable-release governance.
+- **Portal release governance** — canonical route/capability acceptance for governed operator portals.
+- **Database governance** — organization-level database policy, domain ownership, migration/access/RLS/runtime workload safety and incident response.
+- **Sync Workload Governance** — central invariants for sync/batch workloads, per-repo inventories, and shared-DB workload risk controls.
+- **Worktree and Session Governance** — writable-session isolation and hygiene checks.
+- **Rollout tooling** — installer and upgrade scripts for lightweight repo adoption.
+
+## Architecture Change Governance
+
+The architecture layer exists because individually compliant Issues/PRs can still accumulate into repository-wide architecture drift.
+
+Active business/application repos should maintain:
+
+- `docs/00_CURRENT_STATE.md` — concise operational snapshot.
+- `docs/01_ARCHITECTURE.md` — canonical current architecture SSOT.
+- ADR/decision records — why material decisions were made.
+- bounded Phase documents/Issues for multi-PR or architecture-changing work.
+
+Small patches remain lightweight. Escalation is based on architecture consequence—boundary, ownership, interface, data semantics, runtime topology, workload architecture, trust boundary, or major invariant—not line count.
+
+Architecture-affecting Phases close only after implementation/deployment evidence and canonical architecture are reconciled.
+
+Templates:
+
+- [`templates/docs/01_ARCHITECTURE.md`](templates/docs/01_ARCHITECTURE.md)
+- [`templates/docs/PHASE.template.md`](templates/docs/PHASE.template.md)
+- [`templates/github/pull_request_template.md`](templates/github/pull_request_template.md)
+
+The first reconciliation pilot was OrderMgmt Phase 0 (#260 / PR #261).
 
 ## Issue Creation Rule
 
-No raw `gh issue create --body` for normal development work.
+No raw low-structure Issue creation for normal development work. Use the governed repository tooling/template or an explicit approved exception. If an Issue is created outside governance format, correct it before coding begins.
 
-Agents must create Issues using:
-
-1. `bin/rp-issue-create`
-2. The repository GitHub Issue Form/template through the GitHub UI
-3. An explicit user-approved exception
-
-If an Issue is created outside governance format, it must be corrected before coding begins.
-
-See [docs/ISSUE_GOVERNANCE.md](docs/ISSUE_GOVERNANCE.md).
+See [`docs/ISSUE_GOVERNANCE.md`](docs/ISSUE_GOVERNANCE.md).
 
 ## Install
 
@@ -54,123 +69,20 @@ bin/rp-governance-install --repos repos.txt
 bin/rp-governance-install retailpulses/RPagentOS --dry-run
 ```
 
+The installer installs `docs/01_ARCHITECTURE.md` only when absent so upgrades do not overwrite repository-owned architecture truth.
+
 ## Database Governance
 
-See [`docs/DATABASE_GOVERNANCE.md`](docs/DATABASE_GOVERNANCE.md) for the canonical organization-level database governance policy.
-
-The policy covers:
-- Domain ownership and migration authority
-- Migration naming and quality standards
-- Hosted write safety
-- Access classes and RLS requirements
-- Generated types policy
-- Environment separation
-- Audit cadence
-- Runtime workload safety (imports, syncs, backfills, scheduled jobs, agent operations, maintenance)
-- N+1 lookup prohibition with request-count budgets
-- Change-aware writes (no rewriting unchanged rows for per-row timestamps)
-- Access path declaration (internal_api, supavisor, postgrest, direct_postgres)
-- Scheduled workload release mapping to reviewed Git commits
-- Rollout gates for high-risk workloads (dry-run → canary → full run → healthy cycles)
-- Current-run health independence from historical alerts
-- Observability (requests, rows, batches, runtime, retries/dead letters, unchanged-write ratio)
-- Resource management (compute resize, downgrade gates, monitoring thresholds)
-- Safety controls (dry-run, batching, concurrency, timeouts, retries, kill switches, approval boundaries)
-
-Supporting documents:
-- [`docs/DATABASE_ACCESS_POLICY.yaml`](docs/DATABASE_ACCESS_POLICY.yaml) — machine-readable database access control policy
-- [`docs/DATABASE_CAPABILITIES.yaml`](docs/DATABASE_CAPABILITIES.yaml) — machine-readable database capabilities registry
-- [`docs/DATABASE_OWNERSHIP.yaml`](docs/DATABASE_OWNERSHIP.yaml) — machine-readable domain ownership registry
-- [`docs/DATABASE_WORKLOADS.yaml`](docs/DATABASE_WORKLOADS.yaml) — machine-readable workload registry (safety controls per workload)
-- [`docs/DATABASE_INCIDENT_RESPONSE.md`](docs/DATABASE_INCIDENT_RESPONSE.md) — incident response playbook
-
-After installation, each repository has:
-- `governance/local.yaml` — minimal repository-owned declaration of the selected governance ref, domains, workloads, and stricter local constraints; upgrades never overwrite an existing declaration
-- `docs/16_DATABASE_GOVERNANCE.md` — local reference pointing to the canonical policy
-- `docs/16_DATABASE_GOVERNANCE.local.md` — (repo-created) repository-specific declarations
-- `.github/workflows/database-governance.yml` — thin wrapper calling the central reusable workflow
+See [`docs/DATABASE_GOVERNANCE.md`](docs/DATABASE_GOVERNANCE.md) for canonical organization-level database governance policy.
 
 ## Sync Workload Governance
 
-Sync and batch workload governance is split across three artifacts:
+See [`docs/SYNC_WORKLOAD_GOVERNANCE.md`](docs/SYNC_WORKLOAD_GOVERNANCE.md).
 
-- [`docs/SYNC_WORKLOAD_GOVERNANCE.md`](docs/SYNC_WORKLOAD_GOVERNANCE.md) — central invariants: retry, idempotency, dry-run, logging, concurrency, kill switch, health checks, and rollback policies for all sync/batch workloads.
-- Per-repo `SYNC_JOB_INVENTORY.md` — local inventory tracking cron schedules, entry points, dependencies, environment requirements, owner, and runbook links.
-- [`docs/DATABASE_WORKLOADS.yaml`](docs/DATABASE_WORKLOADS.yaml) — database risk registry (shared-DB only): workload classification, safety controls, rollout gates, and access path declaration.
+## Worktree and Session Governance
 
-After installation, each repository also receives:
-- `docs/17_SYNC_WORKLOAD_GOVERNANCE.md` — local reference to the canonical sync workload governance policy
-- `docs/SYNC_JOB_INVENTORY.md` — local sync job inventory (created and maintained per-repo)
+See [`docs/WORKTREE_AND_SESSION_GOVERNANCE.md`](docs/WORKTREE_AND_SESSION_GOVERNANCE.md).
 
-## Structure
+## Adoption principle
 
-```text
-rp-governance-kit/
-├── .github/workflows/
-│   ├── governance-checks.yml                 # Central reusable workflow (blocking)
-│   ├── post-deploy-governance.yml            # Central reusable workflow (non-blocking)
-│   ├── vps-immutable-release.yml              # Central VPS deployment orchestration
-│   ├── portal-acceptance.yml                   # Canonical Ops Portal release gate
-│   └── database-governance-checks.yml        # Central reusable workflow (database)
-├── docs/
-│   ├── ISSUE_GOVERNANCE.md                   # Issue-first governance policy
-│   ├── PORTAL_RELEASE_GOVERNANCE.md           # Canonical Portal acceptance policy
-│   ├── DATABASE_GOVERNANCE.md                # Canonical database governance policy
-│   ├── DATABASE_ACCESS_POLICY.yaml           # Database access control policy
-│   ├── DATABASE_CAPABILITIES.yaml            # Database capabilities registry
-│   ├── DATABASE_OWNERSHIP.yaml               # Domain ownership registry
-│   ├── DATABASE_WORKLOADS.yaml               # Workload registry (safety controls)
-│   ├── DATABASE_INCIDENT_RESPONSE.md         # Database incident response playbook
-│   └── SYNC_WORKLOAD_GOVERNANCE.md           # Sync workload governance
-├── templates/
-│   ├── DATABASE_WORKLOAD.example.yaml          # Example database workload config
-│   ├── bin/                                  # Agent scripts installed into target repos
-│   │   ├── rp-issue-create
-│   │   ├── rp-issue-audit
-│   │   ├── rp-issue-work
-│   │   ├── rp-issue-closeout
-│   │   ├── rp-deploy-closeout
-│   │   └── rp-repo-housekeeping
-│   ├── docs/                                 # Docs templates and engineering standards
-│   │   ├── 00_CURRENT_STATE.md
-│   │   ├── 05_DECISION_LOG.md
-│   │   ├── 10_ENGINEERING_PRINCIPLES.md
-│   │   ├── 11_FRONTEND_STANDARDS.md
-│   │   ├── 12_DATA_ACCESS_AND_SECRETS.md
-│   │   ├── 13_PLATFORM_DEPENDENCY_POLICY.md
-│   │   ├── 14_ISSUE_GOVERNANCE.md
-│   │   ├── 15_DEPLOYMENT_AND_HOUSEKEEPING.md
-│   │   ├── 16_DATABASE_GOVERNANCE.md         # Installable database governance reference
-│   │   ├── 17_SYNC_WORKLOAD_GOVERNANCE.md    # Installable sync workload governance reference
-│   │   └── SYNC_JOB_INVENTORY.template.md    # Template for per-repo sync job inventory
-│   └── github/
-│       ├── pull_request_template.md          # PR template
-│       └── workflows/
-│           ├── governance-checks-wrapper.yml  # Thin wrapper for target repos
-│           ├── post-deploy-governance-wrapper.yml # Thin wrapper for target repos
-│           └── database-governance-wrapper.yml # Thin wrapper for database checks
-├── bin/
-│   ├── rp-governance-install                 # Installer script
-│   ├── rp-issue-create                       # Local wrapper for the template command
-│   ├── rp-issue-audit                        # Local wrapper for the template command
-│   ├── rp-issue-work                         # Local wrapper for the template command
-│   ├── rp-issue-closeout                     # Local wrapper for the template command
-│   ├── rp-deploy-closeout                    # Local wrapper for the template command
-│   └── rp-repo-housekeeping                  # Local wrapper for the template command
-└── README.md
-```
-
-## Safety
-
-- Never pushes `main` directly.
-- Never auto-merges.
-- Never overwrites repo-specific docs without `--force`.
-- Skips archived repos.
-- Checks for existing governance PRs before opening duplicates.
-- Keeps installed repo governance lightweight and agent-friendly.
-
-## Change log
-
-- 2026-08-31: Added worktree/session isolation governance — canonical `WORKTREE_AND_SESSION_GOVERNANCE.md`, read-only `rp-worktree-hygiene` checker, session ownership record, and active-repository adoption inventory.
-- 2026-08-29: Added canonical Ops Portal release governance and reusable acceptance workflow.
-- 2026-08-14: Added reusable VPS immutable-release orchestration for repo-owned deployment adapters.
+Central policy defines the invariant; repository-local declarations define repository-specific facts and may be stricter. Managed references can be upgraded centrally, while repository-owned current-state, architecture, decisions, and inventories must not be blindly overwritten.

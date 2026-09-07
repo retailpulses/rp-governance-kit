@@ -67,6 +67,7 @@ domains:
         - ticket_share_attachments
         - rakuten_rmesse_inquiries
         - rakuten_rmesse_sync_state
+        - amazon_mail_sync_state
       views: []
       functions:
         - generate_ticket_number
@@ -80,7 +81,17 @@ domains:
         - resolve_ticket_share
         - authorize_ticket_share_attachment
         - ingest_rakuten_rmesse_inquiry
-      storage_buckets: []
+        - ingest_amazon_mail_message
+        - convert_amazon_mail_to_ticket
+        - claim_amazon_mail_attachments
+        - finalize_amazon_mail_attachment_batch
+        - claim_amazon_mail_send
+        - promote_abandoned_amazon_send
+        - begin_amazon_mail_provider_mutation
+        - resolve_amazon_mail_send_as_not_sent
+        - finalize_amazon_mail_send
+      storage_buckets:
+        - ticket-attachments
     notes: >
       Mixed migration naming: 0001/0002 (grandfathered sequential) + timestamp-based.
       18 zero-byte _remote.sql placeholder files for RPagentOS-authored migrations

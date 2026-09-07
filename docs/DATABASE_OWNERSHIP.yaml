@@ -67,6 +67,7 @@ domains:
         - ticket_share_attachments
         - rakuten_rmesse_inquiries
         - rakuten_rmesse_sync_state
+        - amazon_mail_sync_state
       views: []
       functions:
         - generate_ticket_number
@@ -80,6 +81,11 @@ domains:
         - resolve_ticket_share
         - authorize_ticket_share_attachment
         - ingest_rakuten_rmesse_inquiry
+        - ingest_amazon_mail_message
+        - convert_amazon_mail_to_ticket
+        - claim_amazon_mail_attachments
+        - claim_amazon_mail_send
+        - finalize_amazon_mail_send
       storage_buckets: []
     notes: >
       Mixed migration naming: 0001/0002 (grandfathered sequential) + timestamp-based.

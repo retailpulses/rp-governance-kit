@@ -113,16 +113,28 @@ workloads:
         - tickets
         - ticket_messages
         - ticket_events
+      expected_volume_rows_min: 0
+      expected_volume_rows_max: 6001
+      expected_request_count_min: 1
+      expected_request_count_max: 2100
+      expected_runtime_seconds_max: 120
       concurrency_max: 1
       statement_timeout_ms: 15000
       max_retries: 0
       retry_strategy: none
+      batch_size_min: 1
+      batch_size_max: 100
+      cursor_strategy: durable_received_time_message_id_with_frozen_window
       request_budget:
         max_requests_per_invocation: 2100
         max_rows_per_invocation: 2000
         max_requests_per_1000_input_rows: 1050
         bulk_fetch_strategy: pagination-cursor
         formula: "2100 requests / (2000 max input rows / 1000) = 1050 requests per 1000 rows"
+      change_aware_writes:
+        enabled: true
+        freshness_strategy: provider_message_identity_insert_or_skip
+        unchanged_write_ratio_target: 0.0
       egress_contract:
         client_identity: ticket-handling/ticketing_amazon_zoho_mail_sync
         projection_policy: explicit_columns
@@ -130,18 +142,27 @@ workloads:
         incremental_cursor: "durable (received_time,message_id) watermark with 15-minute overlap and frozen run_to"
         max_response_bytes_per_invocation: 52428800
         max_response_bytes_per_day: 52428800
-        warning_budget_pct: 80
+        warning_budget_pct: 70
         critical_budget_pct: 100
       rollout_gates:
         dry_run_completed: false
         kill_switch_tested: false
         canary_completed: false
         canary_row_limit: 1
+      error_recording:
+        mechanism: amazon_mail_sync_state_and_cloudflare_structured_logs
+        retention_days: 30
+        owner_repo: retailpulses/ticket-handling
+      monitoring:
+        mechanism: cloudflare_worker_logs_and_sync_state_metrics
+        required_metrics: [requests, database_query_count, rows_scanned, business_rows_changed, rows_written, unchanged_rows_written, unchanged_write_ratio, response_bytes, retries, errors, runtime_ms, cursor_range, statement_timeout_count, statement_timeout_rate_pct]
+        warning_thresholds: { request_budget_pct: 70, response_byte_budget_pct: 70, rows_written_pct: 80, retry_count: 1, statement_timeout_rate_pct: 5, unchanged_write_ratio: 0.0 }
+        critical_thresholds: { request_budget_pct: 100, response_byte_budget_pct: 100, rows_written_pct: 150, retry_count: 1, statement_timeout_rate_pct: 15, unchanged_write_ratio: 0.1 }
       incident_ref: ""
       rollback: >
         Set AMAZON_MAIL_INGESTION_MODE=off and deploy the prior reviewed Worker
         release while retaining source evidence.
-    local_inventory_ref: docs/16_DATABASE_GOVERNANCE.local.md
+    local_inventory_ref: docs/SYNC_JOB_INVENTORY.md#ticketing_amazon_zoho_mail_sync
     source_repo: retailpulses/ticket-handling
     deployed_from: ""
     approved_by: "pending retailpulses/ticket-handling#235 rollout approval"
@@ -176,39 +197,65 @@ workloads:
       affected_tables:
         - inbound_ticket_messages
         - ticket_attachments
+      affected_storage_buckets:
+        - ticket-attachments
+      expected_volume_rows_min: 0
+      expected_volume_rows_max: 175
+      expected_request_count_min: 1
+      expected_request_count_max: 277
+      expected_runtime_seconds_max: 300
       concurrency_max: 1
       statement_timeout_ms: 15000
-      max_retries: 8
+      max_retries: 3
       retry_strategy: exponential_backoff_with_jitter
+      batch_size_min: 1
+      batch_size_max: 25
+      cursor_strategy: oldest_first_retry_claim
       request_budget:
-        max_requests_per_invocation: 51
+        max_requests_per_invocation: 277
         max_rows_per_invocation: 25
-        max_requests_per_1000_input_rows: 2040
+        max_requests_per_1000_input_rows: 11080
         bulk_fetch_strategy: bounded_single_page
-        formula: "51 requests / (25 max input rows / 1000) = 2040 requests per 1000 rows"
+        formula: "277 requests / (25 max input rows / 1000) = 11080 requests per 1000 rows; covers 1 claim + 25 attachmentinfo reads + 125 downloads + 125 Storage writes + 1 transactional bulk Evidence/final-state RPC"
+      change_aware_writes:
+        enabled: true
+        freshness_strategy: deterministic_storage_path_and_evidence_upsert_skip
+        unchanged_write_ratio_target: 0.0
       egress_contract:
         client_identity: ticket-handling/ticketing_amazon_zoho_attachment_reconciliation
         projection_policy: explicit_columns
         pagination_strategy: bounded_single_page
         incremental_cursor: "oldest-first claim with retry timestamp and max 25 rows"
-        max_response_bytes_per_invocation: 262144000
-        max_response_bytes_per_day: 262144000
-        warning_budget_pct: 80
+        max_response_bytes_per_invocation: 1442000000
+        max_response_bytes_per_day: 5768000000
+        warning_budget_pct: 70
         critical_budget_pct: 100
       rollout_gates:
         dry_run_completed: false
         kill_switch_tested: false
         canary_completed: false
         canary_row_limit: 1
+      error_recording:
+        mechanism: inbound_attachment_status_and_cloudflare_structured_logs
+        retention_days: 30
+        owner_repo: retailpulses/ticket-handling
+      monitoring:
+        mechanism: cloudflare_worker_logs_and_attachment_report
+        required_metrics: [requests, database_query_count, claimed, stored, rejected, failed, response_bytes, business_rows_changed, rows_written, unchanged_rows_written, unchanged_write_ratio, retries, runtime_ms, statement_timeout_count, statement_timeout_rate_pct]
+        warning_thresholds: { request_budget_pct: 70, response_byte_budget_pct: 70, rows_written_pct: 80, retry_count: 1, statement_timeout_rate_pct: 5, unchanged_write_ratio: 0.0 }
+        critical_thresholds: { request_budget_pct: 100, response_byte_budget_pct: 100, rows_written_pct: 150, retry_count: 2, statement_timeout_rate_pct: 15, unchanged_write_ratio: 0.1 }
       incident_ref: ""
       rollback: "Set AMAZON_MAIL_ATTACHMENTS_ENABLED=false; retain pending references and stored Evidence."
-    local_inventory_ref: docs/16_DATABASE_GOVERNANCE.local.md
+    local_inventory_ref: docs/SYNC_JOB_INVENTORY.md#ticketing_amazon_zoho_attachment_reconciliation
     source_repo: retailpulses/ticket-handling
     deployed_from: ""
     approved_by: "pending retailpulses/ticket-handling#235 attachment canary approval"
     last_reviewed: "2026-09-07"
     notes: >
       Maximum 25 messages, five images per message, and 10 MiB per image.
+      There are zero same-invocation retries; failed references are durably
+      rescheduled with exponential backoff plus jitter for at most three retries
+      (four total attempts).
       Disablement performs no claim, Zoho attachment GET, or Storage write;
       pending references remain resumable.
 
@@ -239,10 +286,18 @@ workloads:
         - ticket_messages
         - tickets
         - ticket_events
+      expected_volume_rows_min: 0
+      expected_volume_rows_max: 4
+      expected_request_count_min: 1
+      expected_request_count_max: 10
+      expected_runtime_seconds_max: 60
       concurrency_max: 1
       statement_timeout_ms: 15000
       max_retries: 0
       retry_strategy: none
+      batch_size_min: 1
+      batch_size_max: 1
+      cursor_strategy: one_operator_operation_with_sent_baseline
       request_budget:
         max_requests_per_invocation: 10
         max_rows_per_invocation: 1
@@ -256,16 +311,25 @@ workloads:
         incremental_cursor: "not_applicable: one authenticated operator operation"
         max_response_bytes_per_invocation: 1048576
         max_response_bytes_per_day: 10485760
-        warning_budget_pct: 80
+        warning_budget_pct: 70
         critical_budget_pct: 100
       rollout_gates:
         dry_run_completed: false
         kill_switch_tested: false
         canary_completed: false
         canary_row_limit: 1
+      error_recording:
+        mechanism: sent_messages_ticket_events_and_cloudflare_structured_logs
+        retention_days: 30
+        owner_repo: retailpulses/ticket-handling
+      monitoring:
+        mechanism: cloudflare_worker_logs_and_outbox_status
+        required_metrics: [provider_requests, database_query_count, response_bytes, rows_written, delivery_status, ambiguous_count, retries, errors, runtime_ms, statement_timeout_count, statement_timeout_rate_pct]
+        warning_thresholds: { request_budget_pct: 70, response_byte_budget_pct: 70, rows_written_pct: 80, retry_count: 1, statement_timeout_rate_pct: 5 }
+        critical_thresholds: { request_budget_pct: 100, response_byte_budget_pct: 100, rows_written_pct: 150, retry_count: 1, statement_timeout_rate_pct: 15 }
       incident_ref: ""
       rollback: "Set AMAZON_MAIL_OUTBOUND_ENABLED=false; retain outbox and sent audit evidence."
-    local_inventory_ref: docs/16_DATABASE_GOVERNANCE.local.md
+    local_inventory_ref: docs/SYNC_JOB_INVENTORY.md#ticketing_amazon_zoho_outbound_reply
     source_repo: retailpulses/ticket-handling
     deployed_from: ""
     approved_by: "pending retailpulses/ticket-handling#235 real reply approval"

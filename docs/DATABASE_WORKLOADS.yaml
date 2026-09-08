@@ -502,6 +502,50 @@ workloads:
       this exception and complete portal authorization. Governance registration
       evidence: rp-governance-kit#51.
 
+  ops_product_manual_fields:
+    owner_repo: retailpulses/RPagentOS
+    domain: product_catalog
+    mode: write
+    access_path: internal_api
+    credential_class: write_scoped
+    triggers:
+      - type: event
+    status: planned
+    kill_switch:
+      method: feature_flag
+      identifier: OPS_PRODUCT_WRITES_ENABLED
+      fail_closed: true
+    safety_profile:
+      category: agent_operations
+      risk_level: medium
+      description: >
+        Existing Access operators edit three allowed fields for one Item Code.
+        Ops gateway verifies user JWT; RPagentOS is the sole product writer and
+        logs trusted actor/request ID. No bulk or schedule. Last-write-wins.
+      affected_tables:
+        - product_variants
+        - product_commercials
+      concurrency_max: 1
+      max_retries: 0
+      retry_strategy: none
+      request_budget:
+        max_requests_per_invocation: 3
+        max_requests_per_1000_input_rows: 3000
+        bulk_fetch_strategy: none
+      incident_ref: ""
+      rollback: "Disable Ops writes or remove OPS_CATALOG_API_TOKEN; preserve OrderMgmt token and business rows."
+    local_inventory_ref: docs/16_DATABASE_GOVERNANCE.local.md
+    source_repo: retailpulses/RPagentOS
+    deployed_from: "pending release evidence in ops-portal#81 and RPagentOS#121"
+    approved_by: "User deployment authorization 2026-09-08; rp-governance-kit#74"
+    approved_at: "2026-09-08"
+    last_reviewed: "2026-09-08"
+    notes: >
+      Request-local concurrency one; multiple operators may overlap. Gateway has
+      an 8-second owner deadline, no write retry. Cost computed by existing DB
+      trigger, marketplace sync separate. Three PostgREST calls maximum per PATCH;
+      explicit projections, one affected commercial row, fail on missing/duplicate.
+
   # ── OrderMgmt operator product overrides ───────────────────────────────
   ordermgmt_manual_product_overrides:
     owner_repo: retailpulses/OrderMgmt

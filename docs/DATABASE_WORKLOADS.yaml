@@ -510,7 +510,7 @@ workloads:
     credential_class: write_scoped
     triggers:
       - type: event
-    status: planned
+    status: active
     kill_switch:
       method: feature_flag
       identifier: OPS_PRODUCT_WRITES_ENABLED
@@ -536,7 +536,7 @@ workloads:
       rollback: "Disable Ops writes or remove OPS_CATALOG_API_TOKEN; preserve OrderMgmt token and business rows."
     local_inventory_ref: docs/16_DATABASE_GOVERNANCE.local.md
     source_repo: retailpulses/RPagentOS
-    deployed_from: "pending release evidence in ops-portal#81 and RPagentOS#121"
+    deployed_from: "RPagentOS@df7a0a39a6fa246b55beddf4fab6c75c6e450dbb; ops-portal@e938832bfe17b74b900a8f31cd7ca346e47702d0"
     approved_by: "User deployment authorization 2026-09-08; rp-governance-kit#74"
     approved_at: "2026-09-08"
     last_reviewed: "2026-09-08"
@@ -546,6 +546,9 @@ workloads:
       trigger, marketplace sync separate. Three PostgREST calls maximum per PATCH;
       explicit projections, one affected commercial row, fail on missing/duplicate.
 
+      Release runs 34182183427 / 34182187305 / 34182200835 passed. Owner same-value
+      PATCH and GET were 200 with no business-value change. Gateway writes enabled;
+      existing Access browser login acceptance remains pending.
   # ── OrderMgmt operator product overrides ───────────────────────────────
   ordermgmt_manual_product_overrides:
     owner_repo: retailpulses/OrderMgmt

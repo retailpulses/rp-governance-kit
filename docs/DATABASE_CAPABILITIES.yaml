@@ -69,6 +69,15 @@ capabilities:
           Mail-integration reads the owner-approved product_variants/platform_accounts
           surface for inquiry context and UUID resolution. No product_catalog writes.
 
+      retailpulses/ops-portal:
+        read: true
+        write: true
+        schema_change: false
+        notes: >
+          Operator-only exact SKU reads and three manual commercial fields via
+          RPagentOS owner API; independent Ops service token plus verified Access
+          subject. No direct database credential, generic update or bulk mode.
+
       retailpulses/OrderMgmt:
         read: true
         write: true

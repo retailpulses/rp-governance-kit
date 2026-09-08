@@ -110,6 +110,7 @@ domains:
       - retailpulses/ticket-handling
       - retailpulses/inquiry-automation
       - retailpulses/workers
+      - retailpulses/ops-portal
       - retailpulses/OrderMgmt
       - retailpulses/skills:sync-giga-saved-products
       - retailpulses/skills:mercari-csv-listing

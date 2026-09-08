@@ -89,6 +89,17 @@ access_policy:
         or use service_role. Credential scope is workload-specific and
         declared in DATABASE_WORKLOADS.yaml.
 
+  retailpulses/ops-portal:
+    product_catalog:
+      permitted_access_classes:
+        - internal_api
+      default_credential_class: write_scoped
+      service_role_forbidden: true
+      notes: >
+        OPS_CATALOG_API_TOKEN authorizes only exact SKU read and the three manual
+        fields through RPagentOS. Existing Cloudflare Access identity is verified
+        at Ops; no additional operator credentials. Related to #74.
+
   # ── OrderMgmt (consumer of product_catalog) ───────────────
   retailpulses/OrderMgmt:
     product_catalog:

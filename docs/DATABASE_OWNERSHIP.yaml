@@ -157,6 +157,7 @@ domains:
         - compute_inventory_status
         - compute_presale_qty
         - compute_mercari_qty
+        - compute_mercari_effective_prices
         - compute_mercari_price_incl_shipping
         - trg_product_commercials_pricing
       triggers:

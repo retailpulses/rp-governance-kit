@@ -7,8 +7,8 @@
 # batch sizes, marketplace mapping, and monitoring thresholds are owned by the
 # business repository's local sync inventory (docs/SYNC_JOB_INVENTORY.md).
 #
-# Version: 10
-# Last updated: 2026-09-07
+# Version: 11
+# Last updated: 2026-09-13
 # Governance ref: main
 #
 # Governed by: retailpulses/rp-governance-kit
@@ -84,6 +84,90 @@
 database: retailpulses_shared
 
 workloads:
+
+  # ── RPagentOS Mercari paired-target backfill ───────────────────────
+  rpagentos_mercari_paired_target_backfill_20260913:
+    owner_repo: retailpulses/RPagentOS
+    domain: product_catalog
+    mode: write
+    access_path: direct_postgres
+    credential_class: admin
+    triggers:
+      - type: manual
+        mode: one_time_migration
+    status: active
+    kill_switch:
+      method: worker_cancel
+      identifier: supabase-migrations-workflow
+      fail_closed: true
+    safety_profile:
+      category: backfills
+      risk_level: medium
+      description: >
+        One-time change-aware migration backfill that persists paired Mercari
+        excl-shipping and incl-shipping canonical targets for rows with valid
+        pricing inputs. No marketplace mutation is performed.
+      affected_tables:
+        - product_commercials
+      expected_volume_rows_min: 0
+      expected_volume_rows_max: 10000
+      expected_request_count_min: 1
+      expected_request_count_max: 1
+      expected_runtime_seconds_max: 300
+      concurrency_max: 1
+      statement_timeout_ms: 300000
+      max_retries: 0
+      retry_strategy: none
+      batch_size_min: 1
+      batch_size_max: 1000
+      cursor_strategy: ordered_variant_id_batches_inside_one_transaction
+      request_budget:
+        max_requests_per_invocation: 1
+        max_rows_per_invocation: 10000
+        max_requests_per_1000_input_rows: 1
+        bulk_fetch_strategy: none
+        formula: "one migration transaction; up to ten 1000-row update statements"
+      change_aware_writes:
+        enabled: true
+        freshness_strategy: update_only_when_tcogs_or_either_target_is_distinct
+        unchanged_write_ratio_target: 0.0
+      rollout_gates:
+        dry_run_completed: true
+        dry_run_evidence_ref: "retailpulses/RPagentOS#131 isolated PostgreSQL 17 migration and reapply"
+        kill_switch_tested: true
+        canary_completed: false
+        canary_row_limit: 1000
+      error_recording:
+        mechanism: github_actions_migration_log_and_owner_consistency_readback
+        retention_days: 90
+        owner_repo: retailpulses/RPagentOS
+      monitoring:
+        mechanism: github_actions_and_read_only_consistency_query
+        required_metrics:
+          - pending_migration_count
+          - rows_updated
+          - missing_target_count
+          - target_mismatch_count
+          - legacy_incl_wrapper_mismatch_count
+        warning_thresholds:
+          missing_target_count: 1
+          target_mismatch_count: 1
+        critical_thresholds:
+          target_mismatch_count: 1
+          legacy_incl_wrapper_mismatch_count: 1
+      rollback: >
+        Cancel before transaction commit. After commit, keep downstream writers
+        disabled and deploy a reviewed forward migration restoring the prior
+        trigger/function bodies; target fields are reproducible derived data.
+    local_inventory_ref: docs/16_DATABASE_GOVERNANCE.local.md#one-off-workload-mercari-paired-target-backfill
+    source_repo: retailpulses/RPagentOS
+    deployed_from: "pending merge of retailpulses/RPagentOS#131"
+    approved_by: "Retailpulses owner approval on 2026-09-13"
+    approved_at: "2026-09-13"
+    last_reviewed: "2026-09-13"
+    notes: >
+      This authorizes only the owner migration/backfill and readback. CatalogSync
+      writer activation and Mercari mutations remain separately approval-gated.
 
   # ── Ticketing Amazon buyer-message Zoho mail ingestion ──────
   ticketing_amazon_zoho_mail_sync:

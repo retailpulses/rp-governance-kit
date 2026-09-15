@@ -4,11 +4,11 @@ on:
   workflow_call:
 
 jobs:
-  issue-link-check:
-    name: Issue Link Check
+  governance:
+    name: Governance Checks
     runs-on: ubuntu-latest
     steps:
-      - name: Check PR references GitHub Issue
+      - name: Issue Link Check
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_BODY: ${{ github.event.pull_request.body }}
@@ -29,15 +29,11 @@ jobs:
             exit 1
           fi
 
-  docs-impact-check:
-    name: Docs Impact Check
-    runs-on: ubuntu-latest
-    steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Check system-impacting changes without docs
+      - name: Docs Impact Check
         run: |
           CHANGED=$(git diff --name-only "${{ github.event.pull_request.base.sha }}"..."${{ github.event.pull_request.head.sha }}")
           echo "=== Changed files ==="
@@ -66,15 +62,7 @@ jobs:
             echo "No system-impacting files detected: OK"
           fi
 
-  governance-warnings:
-    name: Governance Warnings (Non-Blocking)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Check for governance warnings
+      - name: Governance Warnings (Non-Blocking)
         continue-on-error: true
         run: |
           CHANGED=$(git diff --name-only "${{ github.event.pull_request.base.sha }}"..."${{ github.event.pull_request.head.sha }}" 2>/dev/null || echo "")

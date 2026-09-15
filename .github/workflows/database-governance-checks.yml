@@ -15,8 +15,8 @@ jobs:
       - name: Checkout pinned governance implementation
         uses: actions/checkout@v4
         with:
-          repository: ${{ job.workflow_repository }}
-          ref: ${{ job.workflow_sha }}
+          repository: retailpulses/rp-governance-kit
+          ref: ${{ github.workflow_sha }}
           path: .rp-governance-kit
       - name: Run all blocking database governance checks
         env:
@@ -36,8 +36,8 @@ jobs:
       - name: Checkout pinned governance implementation
         uses: actions/checkout@v4
         with:
-          repository: ${{ job.workflow_repository }}
-          ref: ${{ job.workflow_sha }}
+          repository: retailpulses/rp-governance-kit
+          ref: ${{ github.workflow_sha }}
           path: .rp-governance-kit
       - name: Run production-gate database governance checks
         env:
@@ -58,8 +58,8 @@ jobs:
       - name: Checkout pinned governance implementation
         uses: actions/checkout@v4
         with:
-          repository: ${{ job.workflow_repository }}
-          ref: ${{ job.workflow_sha }}
+          repository: retailpulses/rp-governance-kit
+          ref: ${{ github.workflow_sha }}
           path: .rp-governance-kit
       - name: Run advisory database governance checks
         env:

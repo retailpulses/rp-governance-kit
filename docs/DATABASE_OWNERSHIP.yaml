@@ -36,6 +36,27 @@ database: retailpulses_shared
 
 domains:
 
+  # ── Manual Receipt Issuance ───────────────────────────────
+  receipt_issuance:
+    domain_type: schema
+    owner: retailpulses/commerce-ops
+    access_class: worker_only
+    generated_types: exempt
+    cross_domain: false
+    shared: false
+    consumers: []
+    objects:
+      tables:
+        - receipt_documents
+      views: []
+      functions: []
+      storage_buckets:
+        - receipt-pdfs
+    notes: >
+      Ops Portal owns the manual receipt issuance boundary for commerce-ops#57.
+      The gateway is the sole writer. Objects are private, immutable after
+      issuance, and must not be reused by Ticket Handling or OrderMgmt.
+
   # ── Ticketing ─────────────────────────────────────────────
   ticketing:
     domain_type: schema

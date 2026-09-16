@@ -99,6 +99,16 @@ access_policy:
         OPS_CATALOG_API_TOKEN authorizes only exact SKU read and the three manual
         fields through RPagentOS. Existing Cloudflare Access identity is verified
         at Ops; no additional operator credentials. Related to #74.
+    receipt_issuance:
+      permitted_access_classes:
+        - postgrest
+      default_credential_class: write_scoped
+      service_role_forbidden: true
+      notes: >
+        The existing server-side gateway is the sole writer for its owned
+        receipt_documents and private receipt-pdfs bucket. A dedicated
+        credential must be restricted to the receipt RPC/storage prefix;
+        browser access and service_role fallback are forbidden.
 
   # ── OrderMgmt (consumer of product_catalog) ───────────────
   retailpulses/OrderMgmt:

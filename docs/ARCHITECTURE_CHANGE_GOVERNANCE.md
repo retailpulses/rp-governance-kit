@@ -170,3 +170,53 @@ This policy must not turn ordinary maintenance into ceremony.
 - Architecture Change: Phase + decision + reconciliation required.
 
 Escalate based on architectural consequence, not code size.
+
+## 11. Architecture freshness contract
+
+Reconciliation at Phase close is necessary but not sufficient: a canonical document can become stale later. Active repositories must therefore make architecture freshness detectable rather than relying on maintainers remembering to review documentation.
+
+### 11.1 Canonical verification metadata
+
+`docs/01_ARCHITECTURE.md` must expose, in a machine-readable or consistently parseable form:
+
+- `Last Verified` — date the document was checked against repository and, where relevant, production/runtime evidence;
+- `Verified Against Commit` — repository commit that forms the code/config baseline for that verification;
+- `Invalidating Surfaces` — repository paths whose later changes may invalidate the architecture model;
+- `Runtime Evidence` — production/runtime artifacts that must be re-read when claims depend on activation rather than repository declarations.
+
+`Last Updated` is not a substitute for `Last Verified`. Editing prose does not prove architecture correctness.
+
+### 11.2 Invalidating surfaces
+
+Each repository should keep the invalidating set small and architecture-specific. Typical examples include runtime entrypoints, deployment definitions, workload schedulers, database ownership/schema declarations, public/internal API contracts, infrastructure configuration and cross-repository integration adapters.
+
+A documentation-only change does not refresh architecture unless the architecture was actually reconciled against the relevant evidence.
+
+### 11.3 Change-time gate
+
+When a PR changes an invalidating surface, the repository must do one of the following before the architecture-affecting work is considered complete:
+
+1. reconcile `docs/01_ARCHITECTURE.md` (and `00_CURRENT_STATE.md` or governed inventories when applicable); or
+2. explicitly declare that the change has no architecture impact and record the reason in the PR/Issue/Phase evidence.
+
+Do not force meaningless timestamp edits merely to satisfy automation. The gate exists to require an architecture decision, not documentation churn.
+
+### 11.4 Staleness detection
+
+Repositories should provide a lightweight checker that compares the architecture verification baseline with subsequent changes to declared invalidating surfaces.
+
+A canonical architecture is **STALE** when an invalidating surface changed after the recorded verification baseline and no later architecture reconciliation establishes a new baseline.
+
+A canonical architecture is **FRESH** when no invalidating surface changed after its verified baseline, or a later reconciliation has intentionally advanced that baseline.
+
+Time alone should not make a stable architecture stale. A periodic review interval may create a warning, but change-based invalidation is the primary signal.
+
+### 11.5 Runtime-sensitive claims
+
+Repository checks can establish code/config freshness but cannot prove live runtime truth. If architecture claims include active timers, current releases, deployed routes, credentials/identity, production writers or other activation-sensitive facts, reconciliation must distinguish repository evidence from runtime verification and record the evidence used.
+
+### 11.6 Adoption model
+
+Freshness detection should be integrated into existing repository governance/PR checks where practical rather than creating a new expensive workflow. Start with warning or scoped blocking behavior in a pilot repository, validate signal quality, then promote centrally.
+
+The first pilot is `retailpulses/CatalogSync`, where historical Worker/Baserow documentation drift demonstrated the need for change-based freshness detection.

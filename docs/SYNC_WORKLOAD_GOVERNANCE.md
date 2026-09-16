@@ -4,8 +4,8 @@ Canonical organization-level sync workload governance policy for Retailpulses re
 
 This document is maintained in `retailpulses/rp-governance-kit`. Repository-local files may add stricter rules but may not weaken central rules. If repo-local governance files and this central policy conflict, agents must stop and report the conflict instead of guessing.
 
-**Version:** v1.0.0
-**Last updated:** 2026-07-19
+**Version:** v1.1.0
+**Last updated:** 2026-09-16
 
 ---
 
@@ -16,6 +16,8 @@ Governance defines **invariants** — conditions that must always hold true for 
 | Invariant (governance concern) | Implementation (repository concern) |
 |-------------------------------|-------------------------------------|
 | Every production job must have a stable workload ID | `catalogsync_mercari_shop1_full` |
+| Every production job must have a human-readable display name | `Mercari Shop 1 Full Inventory Sync` |
+| Runtime entrypoint is traceable but may evolve | `scripts/mercari/run_shop1_supabase_full.sh` |
 | No accidental duplicate writer to an external system | Mercari Full and Priority coordinate through a shared `flock` |
 | Every effectful workload must have a kill switch | Environment variable, lock file, or cron comment-out |
 | Runtime source must be traceable to a reviewed commit | VPS symlink to `/opt/catalogsync/releases/<sha>/` |
@@ -99,7 +101,7 @@ Repositories may override the default risk with a documented explanation in the 
 
 ---
 
-## 3. Workload Identity
+## 3. Workload Identity and Naming
 
 ### `MUST` — Stable Workload ID
 
@@ -112,7 +114,74 @@ ordermgmt_giga_shipment_build
 ticket_share_event_api
 ```
 
-The ID must not change across releases, deployments, or runtime migrations. Retired IDs must not be reused.
+The ID must not change across releases, deployments, implementation renames, or runtime migrations. Retired IDs must not be reused.
+
+### `MUST` — Human-Readable Display Name
+
+Every production workload must also declare a concise display name for humans. The display name should explain business/system purpose without requiring knowledge of implementation history or framework names.
+
+Prefer:
+
+```
+Mercari Shop 1 Full Inventory Sync
+Amazon Inventory Sync
+GigaB2B Catalog Ingestion
+```
+
+Avoid using implementation-only labels as the primary human name when they obscure purpose, for example `Shop1 Supabase Full` or `run_live`.
+
+Display names may be improved without changing workload identity or runtime behavior.
+
+### `MUST` — Runtime Entrypoint
+
+Every workload must declare the current runtime entrypoint separately from its ID and display name. Examples include:
+
+- executable script path;
+- systemd service/timer;
+- cron target;
+- Worker route/entrypoint;
+- container command;
+- scheduler target.
+
+The runtime entrypoint is an implementation locator and may change over time. Changing it does **not** create a new workload identity unless the workload itself is being replaced.
+
+### Canonical Three-Layer Model
+
+```text
+Stable workload ID
+        ↓
+Human-readable display name
+        ↓
+Current runtime entrypoint
+```
+
+Example:
+
+```yaml
+id: catalogsync_mercari_shop1_full
+display_name: Mercari Shop 1 Full Inventory Sync
+runtime_entrypoint: scripts/mercari/run_shop1_supabase_full.sh
+```
+
+### `SHOULD` — Purpose-Revealing New Entrypoint Names
+
+New production entrypoints should normally use purpose-revealing names such as:
+
+```
+sync_mercari_shop1_inventory_full.sh
+sync_amazon_inventory.sh
+ingest_gigab2b_catalog.mjs
+```
+
+Generic names such as `run_live.sh`, `main.py`, `worker.js`, or `sync.py` should be avoided unless the surrounding package scope makes the purpose unambiguous.
+
+### `MUST` — Safe Rename Discipline
+
+Renaming a production entrypoint is an operational change, not cosmetic cleanup. Before renaming, identify scheduler, deployment, release-manifest, monitoring, documentation, and cross-repository references.
+
+When direct renaming would create production risk, keep the existing runtime filename/path and introduce the clearer display name first. A later technical rename should use a compatibility wrapper or staged cutover where necessary.
+
+Human-facing documentation, dashboards, Issues, and operational summaries should lead with the display name and include the stable ID or runtime entrypoint when technical precision is needed.
 
 ### `MUST` — Canonical Implementation
 
@@ -132,6 +201,8 @@ Agents must not edit production files directly under runtime directories (e.g., 
 
 A change to a production sync workload must update the local inventory (`docs/SYNC_JOB_INVENTORY.md`) when it changes any of these governed facts:
 
+- Stable workload ID for a newly introduced workload
+- Human-readable display name
 - Trigger or schedule
 - Source or target system
 - Production entrypoint
@@ -224,7 +295,7 @@ Workloads registered in `docs/DATABASE_WORKLOADS.yaml` for shared-database risk 
 Before creating, changing, replacing, enabling, disabling, or deleting a production sync workload, the agent must:
 
 1. Read `docs/SYNC_JOB_INVENTORY.md`.
-2. Identify the existing workload ID, or confirm that this is a new job.
+2. Identify the existing workload ID and display name, or confirm that this is a new job.
 3. Search for existing jobs with the same source, target, or write scope.
 4. Inspect the canonical source and deployment entrypoint.
 5. Identify overlapping writers and concurrency controls.

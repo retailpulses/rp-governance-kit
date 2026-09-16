@@ -4,7 +4,7 @@ Canonical organization-level sync workload governance policy for Retailpulses re
 
 This document is maintained in `retailpulses/rp-governance-kit`. Repository-local files may add stricter rules but may not weaken central rules. If repo-local governance files and this central policy conflict, agents must stop and report the conflict instead of guessing.
 
-**Version:** v1.1.0
+**Version:** v1.1.1
 **Last updated:** 2026-09-16
 
 ---
@@ -105,7 +105,7 @@ Repositories may override the default risk with a documented explanation in the 
 
 ### `MUST` — Stable Workload ID
 
-Every production sync workload must have a permanent, unique ID using `lower_snake_case`:
+Every new production sync workload must have a permanent, unique ID using `lower_snake_case`:
 
 ```
 catalogsync_mercari_shop1_full
@@ -115,6 +115,8 @@ ticket_share_event_api
 ```
 
 The ID must not change across releases, deployments, implementation renames, or runtime migrations. Retired IDs must not be reused.
+
+**Grandfather rule:** workload IDs already in production or established inventories before adoption of this convention keep their existing IDs even if they use another format such as `kebab-case`. Do not rename an established workload solely to conform to the formatting convention; identity stability is more important than cosmetic consistency. New workload IDs use `lower_snake_case`.
 
 ### `MUST` — Human-Readable Display Name
 

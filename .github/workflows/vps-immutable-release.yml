@@ -37,7 +37,7 @@ permissions:
 
 jobs:
   gate:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, macOS, ARM64, mac-local-poc]
     steps:
       - name: Validate deployment request
         env:
@@ -62,7 +62,7 @@ jobs:
 
   release:
     needs: gate
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, macOS, ARM64, mac-local-poc]
     timeout-minutes: 30
     environment: ${{ inputs.environment }}
     concurrency:

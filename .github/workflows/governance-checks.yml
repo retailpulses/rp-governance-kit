@@ -64,10 +64,29 @@ jobs:
 
       - name: Governance Warnings (Non-Blocking)
         continue-on-error: true
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
         run: |
           CHANGED=$(git diff --name-only "${{ github.event.pull_request.base.sha }}"..."${{ github.event.pull_request.head.sha }}" 2>/dev/null || echo "")
           echo "=== Non-blocking governance warnings ==="
           WARNINGS=0
+
+          # Phase 0A quick win: regression/incident/fix work should preserve permanence.
+          COMBINED="${PR_TITLE} ${PR_BODY}"
+          if echo "$COMBINED" | grep -qiE '(^|[^A-Za-z])(regression|incident|hotfix|bugfix|bug|fix)([^A-Za-z]|$)'; then
+            TEST_FILES=$(echo "$CHANGED" | grep -Ei '(^|/)(test|tests|spec)/|[._-](test|spec)[._-]' || true)
+            if [ -z "$TEST_FILES" ] && ! echo "$PR_BODY" | grep -qiE 'regression[- ]?test|test evidence|existing deterministic test|test[- ]?not[- ]?applicable|tests?[[:space:]]*:[[:space:]]*not applicable'; then
+              echo "::warning::Phase 0A: regression/incident/fix work has no detected test change or permanence evidence. Add a regression test, cite an existing deterministic test, or state why tests are not applicable."
+              WARNINGS=$((WARNINGS + 1))
+            fi
+          fi
+
+          # Phase 0A quick win: completion claims should carry verification evidence.
+          if ! echo "$PR_BODY" | grep -qiE '(^|[[:space:]#])(verification|evidence|test plan|closeout)([[:space:]:#]|$)|runtime|read[- ]?back|smoke test|verified'; then
+            echo "::warning::Phase 0A: PR body has no verification/closeout evidence. Add a short Verification/Evidence section with deterministic checks or read-back."
+            WARNINGS=$((WARNINGS + 1))
+          fi
 
           if echo "$CHANGED" | grep -qi 'baserow'; then
             echo "::warning::Baserow reference detected. Baserow is legacy and should be gradually discontinued."

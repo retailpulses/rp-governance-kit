@@ -2,6 +2,12 @@ name: Database Governance Checks
 
 on:
   workflow_call:
+    inputs:
+      governance_ref:
+        description: "rp-governance-kit ref used to run the governance implementation"
+        required: false
+        type: string
+        default: main
 
 jobs:
   blocking:
@@ -16,7 +22,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: retailpulses/rp-governance-kit
-          ref: ${{ github.workflow_sha }}
+          ref: ${{ inputs.governance_ref }}
           path: .rp-governance-kit
       - name: Run all blocking database governance checks
         env:
@@ -37,7 +43,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: retailpulses/rp-governance-kit
-          ref: ${{ github.workflow_sha }}
+          ref: ${{ inputs.governance_ref }}
           path: .rp-governance-kit
       - name: Run production-gate database governance checks
         env:
@@ -59,7 +65,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: retailpulses/rp-governance-kit
-          ref: ${{ github.workflow_sha }}
+          ref: ${{ inputs.governance_ref }}
           path: .rp-governance-kit
       - name: Run advisory database governance checks
         env:

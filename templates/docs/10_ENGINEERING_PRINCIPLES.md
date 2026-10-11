@@ -24,6 +24,22 @@ Active business/application repositories maintain `docs/01_ARCHITECTURE.md` as c
 
 Architecture-affecting work must begin from the current architecture and reconcile it after implementation/deployment before the Phase closes.
 
+## Subscription-Independent Repository Governance
+
+Retailpulses baseline repository governance must remain effective on **GitHub Free for Organizations**. Required safety, auditability, and production controls must not depend on GitHub Team, Enterprise, or another paid subscription tier.
+
+Paid GitHub capabilities such as organization rulesets, private-repository rulesets or branch protection, merge queues, or similar server-side controls may be used as **defense in depth while available**, but they must not be the sole enforcement mechanism for a critical invariant.
+
+In particular:
+
+- Production safety must be enforced at durable boundaries such as CI validation, deployment workflows, production credentials, runtime permissions, and explicit release procedures.
+- A direct push to a source branch must not, by itself, grant the ability to deploy or mutate production.
+- Repository workflow should be proportional to risk. Lab, prototype, migration, and operator-tool repositories without production authority may use direct pushes and optional PRs when that materially improves iteration speed.
+- Production repositories may use stricter review and merge conventions, but the minimum safe operating model must continue to work if paid GitHub governance features disappear.
+- When adopting a paid-plan GitHub control, document the portable fallback or equivalent control before treating it as required governance.
+
+The target is **portable governance first, subscription features second**.
+
 ## PR Requirements
 
 Every PR must explain:

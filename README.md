@@ -1,5 +1,14 @@
 # rp-governance-kit
 
+> [!IMPORTANT]
+> **FREEZE — Retirement / migration only (2026-10-27 JST)**
+>
+> Sponsor decision: consolidate this repository into [`retailpulses/.github`](https://github.com/retailpulses/.github). **No new governance features or new canonical standards should be authored here.** Only security, compatibility and migration-critical fixes are permitted while existing consumers still use this repository.
+>
+> This repository remains the **temporary execution authority for unmigrated consumers**, not the intended long-term source. Track migration and verified cutover in [`.github#11`](https://github.com/retailpulses/.github/issues/11).
+>
+> **Do not rename or archive yet:** active external GitHub Actions / reusable workflow references still target `rp-governance-kit`; GitHub does not redirect Action references after a repository rename. Migrate and verify consumer refs, nested workflows, installers, and rollback before retiring the URL.
+
 Centralized governance toolkit for Retailpulses repositories.
 
 This repository is the central governance source for Retailpulses repositories. The organization `.github` repo may provide default GitHub templates, but governance logic, reusable workflows, agent commands, rollout scripts, and engineering standards are maintained here.

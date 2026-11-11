@@ -123,6 +123,22 @@ access_policy:
         must not hold a product_catalog service-role credential or write its tables
         directly.
 
+  # ── Commerce OPS Orders policy settings (consumer of order_management) ──
+  retailpulses/commerce-ops:
+    order_management:
+      permitted_access_classes:
+        - postgrest
+      default_credential_class: admin
+      service_role_forbidden: false
+      notes: >
+        Existing Orders server-side Supabase service-role access only. The Portal
+        API and Worker read policy versions, active pointer and audit records;
+        Portal API writes use owner-defined RPCs behind the existing Cloudflare
+        Access boundary and a default-off write flag. The privileged credential
+        is not scoped by the registry and must remain server-side; no browser DB
+        access or schema ownership. Production writes remain gated by workload
+        declaration and hosted-write controls. No new proxy service is implied.
+
   # ── ticket-handling (consumer of multiple domains) ────────
   retailpulses/ticket-handling:
     product_catalog:

@@ -167,8 +167,16 @@ capabilities:
   order_management:
     owner: retailpulses/OrderMgmt
     domain_type: schema
-    consumers: []
-    # No external consumers. Order data is self-contained.
+    consumers:
+      retailpulses/commerce-ops:
+        read: true
+        write: true
+        schema_change: false
+        notes: >
+          Orders Portal API and Worker consume policy configuration and the
+          owner-defined settings RPCs. Writes remain feature-disabled until the
+          production workload and hosted-write gates are satisfied; no schema
+          ownership is granted.
 
   # ── Inquiry Management ─────────────────────────────────────
   inquiry_management:

@@ -315,8 +315,9 @@ domains:
     access_class: worker_only
     generated_types: exempt
     cross_domain: false
-    shared: false
-    consumers: []
+    shared: true
+    consumers:
+      - retailpulses/commerce-ops  # Orders Portal API/Worker; policy settings consumer, no schema ownership
     objects:
       tables:
         - sales_orders
@@ -324,8 +325,19 @@ domains:
         - sales_order_message_state
         - order_message_templates
         - pipeline_run_log
+        - auto_approval_policy_versions
+        - auto_approval_policy_active
+        - auto_approval_policy_audit
       views: []
-      functions: []
+      functions:
+        - is_valid_order_auto_approval_policy
+        - guard_order_auto_approval_policy_version
+        - create_order_auto_approval_policy_draft
+        - validate_order_auto_approval_policy
+        - set_order_auto_approval_policy_state
+        - activate_order_auto_approval_policy
+        - disable_order_auto_approval_policy
+        - rollback_order_auto_approval_policy
       storage_buckets: []
     notes: >
       TIMESTAMP COLLISION WARNING: 20260710000000 is used for order_mgmt_core.sql
